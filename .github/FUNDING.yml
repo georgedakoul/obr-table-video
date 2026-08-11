@@ -1,0 +1,4 @@
+# Shows a Sponsor button on the repository. It stays hidden until the account
+# is enrolled at https://github.com/sponsors, which needs identity and payout
+# details only the account owner can provide.
+github: [georgedakoul]
