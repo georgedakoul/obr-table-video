@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { callUrl, PROVIDERS } from "./callurl.js";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js";
 
-// --- Jitsi ---------------------------------------------------------------
+// --- Jitsi url building --------------------------------------------------
 assert.equal(
   callUrl("jitsi", "meet.jit.si", "obr-table-abc", "Gandalf"),
   'https://meet.jit.si/obr-table-abc#userInfo.displayName=%22Gandalf%22&config.prejoinConfig.enabled=false&config.disableDeepLinking=true'
@@ -22,21 +22,42 @@ assert.equal(JSON.parse(decodeURIComponent(dn)), 'Bob "The Rock" & Co');
 // Room ids are escaped rather than able to inject extra path segments.
 assert.ok(callUrl("jitsi", "meet.jit.si", "a/b", "x").startsWith("https://meet.jit.si/a%2Fb#"));
 
-// --- Element Call --------------------------------------------------------
+// Two clients in the same Owlbear room must derive the identical url.
 assert.equal(
-  callUrl("element", PROVIDERS.element.host, "obr-table-abc", "Gandalf"),
-  "https://call.element.io/obr-table-abc"
+  callUrl("jitsi", "meet.jit.si", "obr-table-XYZ", "GM"),
+  callUrl("jitsi", "meet.jit.si", "obr-table-XYZ", "GM"),
 );
-assert.ok(callUrl("element", "call.element.io", "a/b", "x").endsWith("/a%2Fb"));
 
-// --- Rejections ----------------------------------------------------------
 assert.equal(callUrl("jitsi", "   ", "r1", "x"), null, "empty host refused");
-assert.equal(callUrl("nope", "call.element.io", "r1", "x"), null, "unknown provider refused");
+assert.equal(callUrl("nope", "meet.jit.si", "r1", "x"), null, "unknown provider refused");
 
-// Every provider in the table produces a usable https URL from its own default.
+// Every provider that claims to join by name builds a usable https url.
 for (const [key, p] of Object.entries(PROVIDERS)) {
+  if (!p.joinsByName) continue;
   const u = callUrl(key, p.host, "room1", "Someone");
   assert.ok(u && new URL(u).protocol === "https:", `${key} builds an https url`);
+}
+
+// --- sanitizeLink: a GM-pasted link is loaded into an iframe -------------
+assert.equal(sanitizeLink("https://call.element.io/abc"), "https://call.element.io/abc");
+assert.equal(sanitizeLink("  https://meet.example.org/x  "), "https://meet.example.org/x");
+
+// Anything that is not absolute https is refused.
+for (const bad of [
+  "javascript:alert(1)",
+  "JavaScript:alert(1)",
+  "data:text/html,<script>alert(1)</script>",
+  "http://insecure.example.org/x",
+  "vbscript:msgbox",
+  "file:///etc/passwd",
+  "//call.element.io/abc",
+  "call.element.io/abc",
+  "",
+  "   ",
+  null,
+  undefined,
+]) {
+  assert.equal(sanitizeLink(bad), null, `refuses ${JSON.stringify(bad)}`);
 }
 
 console.log("all ok");

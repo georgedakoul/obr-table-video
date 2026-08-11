@@ -29,14 +29,17 @@
   #join { background: #bb99ff; color: #1e1e1e; border-color: #bb99ff; font-weight: 600; }
   #join:hover { background: #cdb3ff; }
   p { margin: 0; font-size: 12px; opacity: .6; }
-  #hostRow, #fallback { display: none; }
+  .warn { color: #ffcf8b; }
+  .err { color: #ff9b9b; }
+  #hostRow, #fallback, #gmRow { display: none; }
+  hr { border: 0; border-top: 1px solid #3a3a3a; margin: 4px 0; }
+  .row { display: flex; gap: 6px; }
+  .row button { flex: 0 0 auto; }
 
   #boot { flex: 1 1 auto; padding: 16px; font-size: 13px; }
   #boot code { display: block; margin-top: 8px; padding: 8px; background: #000;
                border-radius: 6px; font-size: 11px; white-space: pre-wrap;
                word-break: break-all; color: #ff9b9b; }
-  details { margin-top: 4px; font-size: 12px; opacity: .7; }
-  summary { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -52,7 +55,15 @@
 </div>
 
 <div id="setup">
-  <label for="provider">Video service</label>
+  <p id="status"></p>
+  <button id="join">Join video</button>
+  <button id="popout">Open in separate window</button>
+  <p id="note"></p>
+  <input id="fallback" readonly>
+
+  <hr>
+
+  <label for="provider">Default service</label>
   <select id="provider"></select>
 
   <div id="hostRow">
@@ -60,16 +71,18 @@
     <input id="server" spellcheck="false" autocapitalize="off">
   </div>
 
-  <button id="join">Join video</button>
-  <button id="popout">Open in separate window</button>
-  <p id="note"></p>
-  <input id="fallback" readonly>
-
-  <details>
-    <summary>Call link (share if a player cannot join)</summary>
-    <p id="roomLabel" style="margin-top:6px"></p>
-    <input id="shareLink" readonly>
-  </details>
+  <div id="gmRow">
+    <hr>
+    <label for="shared">Shared call link (GM only)</label>
+    <p>Paste a link to any call (Element Call, Zoom, Meet&hellip;) and everyone in
+       this room joins that exact call instead of the default.</p>
+    <input id="shared" spellcheck="false" autocapitalize="off" placeholder="https://...">
+    <p id="sharedErr" class="err"></p>
+    <div class="row">
+      <button id="saveShared">Set for room</button>
+      <button id="clearShared">Clear</button>
+    </div>
+  </div>
 </div>
 
 <iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
@@ -80,6 +93,7 @@
   window.__tableVideoFail = function (what, detail) {
     var b = document.getElementById("boot");
     if (!b || window.__tableVideoReady) return;
+    b.style.display = "block";
     b.innerHTML = "<b>Table Video could not start.</b><br>" + what;
     if (detail) { var c = document.createElement("code"); c.textContent = detail; b.appendChild(c); }
   };
@@ -100,7 +114,11 @@
 
 <script type="module">
 import OBR from "https://esm.sh/@owlbear-rodeo/sdk@3.1.0";
-import { callUrl, PROVIDERS } from "./callurl.js";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js";
+
+// Namespaced per Owlbear convention. Holds the GM's chosen call link so every
+// client in the room joins the same call, whatever the provider.
+const META_KEY = "com.github.georgedakoul.obr-table-video/callLink";
 
 // ponytail: localStorage throws in cross-site iframes on Safari, so it is
 // optional convenience only, never load-bearing.
@@ -117,28 +135,26 @@ try {
       $("setup").style.display = "flex";
 
       const name = await OBR.player.getName();
-      // OBR gives every client in the room the same room id (it arrives in the
-      // obrref query param), so this resolves to one shared call for everyone.
+      const isGM = (await OBR.player.getRole()) === "GM";
+      // Same for every client in the room: it arrives in the obrref param.
       const callRoom = "obr-table-" + OBR.room.id;
 
       for (const [key, p] of Object.entries(PROVIDERS)) {
         $("provider").add(new Option(p.label, key));
       }
-      $("provider").value = recall("tableVideoProvider") || "element";
+      $("provider").value = recall("tableVideoProvider") || "jitsi";
       $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
-      $("note").textContent = "Everyone in this Owlbear room joins the same call.";
-      $("roomLabel").textContent = "Room: " + callRoom;
+      $("gmRow").style.display = isGM ? "block" : "none";
 
-      function syncHostRow() {
-        const p = PROVIDERS[$("provider").value];
-        $("hostRow").style.display = p && p.editableHost ? "block" : "none";
-        const u = currentUrl();
-        if (u) $("shareLink").value = u;
-      }
+      let sharedLink = null;
+      let joinedUrl = null;
 
-      function currentUrl() {
+      // The default call, derived from the Owlbear room id. Only meaningful for
+      // providers that resolve a room from its name.
+      function defaultUrl() {
         const key = $("provider").value;
         const p = PROVIDERS[key];
+        if (!p || !p.joinsByName) return null;
         const host = p.editableHost ? $("server").value : p.host;
         const url = callUrl(key, host, callRoom, name);
         if (url) {
@@ -148,28 +164,67 @@ try {
         return url;
       }
 
-      $("provider").onchange = syncHostRow;
-      $("server").oninput = syncHostRow;
-      syncHostRow();
+      const activeUrl = () => sharedLink || defaultUrl();
 
-      let joinedUrl = null;
+      function render() {
+        const p = PROVIDERS[$("provider").value];
+        $("hostRow").style.display = p && p.editableHost ? "block" : "none";
+        const url = activeUrl();
+
+        if (sharedLink) {
+          $("status").className = "";
+          $("status").textContent = "Joining the GM's call at " + new URL(sharedLink).host + ".";
+        } else if (url) {
+          $("status").className = "";
+          $("status").textContent = "Everyone in this Owlbear room joins the same call automatically.";
+        } else {
+          $("status").className = "warn";
+          $("status").textContent = "No call set. The GM needs to paste a shared call link below.";
+        }
+        $("join").disabled = !url;
+      }
+
+      // Load the GM's link, then keep following it if the GM changes it.
+      const readMeta = (meta) => {
+        sharedLink = sanitizeLink(meta && meta[META_KEY]);
+        if (isGM) $("shared").value = sharedLink || "";
+        render();
+      };
+      readMeta(await OBR.room.getMetadata());
+      OBR.room.onMetadataChange(readMeta);
+
+      $("provider").onchange = render;
+      $("server").oninput = render;
+
+      $("saveShared").onclick = async () => {
+        const clean = sanitizeLink($("shared").value);
+        if (!clean) {
+          $("sharedErr").textContent = "Needs a full https:// link.";
+          return;
+        }
+        $("sharedErr").textContent = "";
+        await OBR.room.setMetadata({ [META_KEY]: clean });
+      };
+      $("clearShared").onclick = async () => {
+        $("sharedErr").textContent = "";
+        await OBR.room.setMetadata({ [META_KEY]: undefined });
+      };
 
       function show(joined, url) {
         $("setup").style.display = joined ? "none" : "flex";
         $("call").style.display = joined ? "block" : "none";
         $("bar").style.display = joined ? "flex" : "none";
         // Only touch src when the target actually changes. Reassigning the same
-        // url reloads the iframe, which drops the old connection and opens a new
-        // one -- the room briefly shows two of you.
-        if ($("call").src !== (joined ? url : "about:blank")) {
-          $("call").src = joined ? url : "about:blank";
-        }
+        // url reloads the iframe, dropping the old connection while a new one
+        // opens, which briefly shows two of you in the room.
+        const target = joined ? url : "about:blank";
+        if ($("call").src !== target) $("call").src = target;
         joinedUrl = joined ? url : null;
         if (joined) $("barLabel").textContent = new URL(url).host;
       }
 
       $("join").onclick = () => {
-        const url = currentUrl();
+        const url = activeUrl();
         if (!url) return;
         if (joinedUrl === url) return; // already in this call, don't dial twice
         show(true, url);
@@ -180,7 +235,7 @@ try {
       $("leave").onclick = () => show(false);
 
       const popout = () => {
-        const url = currentUrl();
+        const url = activeUrl();
         if (!url) return;
         if (window.open(url, "_blank", "width=960,height=680")) {
           // Hand the call over to the new window rather than running both,

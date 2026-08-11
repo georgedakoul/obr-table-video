@@ -43,18 +43,38 @@ edit those three lines to point at its own host. They are absolute rather than
 relative because GitHub Pages serves projects from a subpath, where a leading
 `/` resolves to the wrong place.
 
-## Video service
+## How everyone ends up in the same call
 
-Pick one in the **Video service** dropdown. The choice is remembered per browser.
+Two mechanisms, in priority order.
 
-- **Element Call** (default) — `call.element.io`. Free, guest access with just a
-  display name, no time limit on embedded calls.
-- **Jitsi** — the server is editable. Note that **`meet.jit.si` deliberately
-  disconnects embedded calls after 5 minutes**: it prints "embedding meet.jit.si
-  is intended only for demonstration purposes" and drops the call. That is 8x8's
-  policy for their free demo server, not a setting this extension can change.
+**1. Shared call link (GM only).** The GM pastes any `https://` call link into
+the *Shared call link* box and clicks **Set for room**. It is stored in Owlbear
+room metadata, so every client in the room picks it up immediately and joins
+that exact call. Works with anything: Element Call, Zoom, Meet, Discord's own
+invite (in a browser tab), a self-hosted Jitsi. **Clear** removes it.
 
-If you want Jitsi specifically with no time limit, you have three options:
+**2. Automatic, by room name.** With no shared link set, the call room is
+derived from the Owlbear room id, so everyone computes the identical URL with
+nothing to pass around.
+
+Automatic mode only works with a service that resolves a room *from its name*.
+Jitsi does. **Element Call does not** — visiting `call.element.io/<name>` starts
+a brand new call rather than joining an existing one, so the GM and each player
+would each create their own separate call. That is why Element Call is not in
+the dropdown: use it through the shared call link instead.
+
+### Using Element Call
+
+1. GM opens <https://call.element.io> in a normal tab and starts a call.
+2. Copy the URL from the address bar.
+3. Paste it into **Shared call link** → **Set for room**.
+
+### The Jitsi time limit
+
+`meet.jit.si` **deliberately disconnects embedded calls after 5 minutes**. It
+prints "embedding meet.jit.si is intended only for demonstration purposes" and
+drops the call. That is 8x8's policy for their free demo server, not something
+this extension can change. Options:
 
 | Option | Cost | Needs a backend |
 |---|---|---|
