@@ -71,9 +71,6 @@ export class Mesh {
     this.onError = onError;
     this.localStream = localStream;
     this.peers = new Map(); // peerId -> { pc, pendingIce[] }
-    // Counters so the UI can tell "no signalling arrived" apart from
-    // "signalling arrived but ICE could not find a path".
-    this.stats = { sent: 0, received: 0 };
   }
 
   /** Reconcile open connections against the set of peers currently in the call. */
@@ -118,9 +115,7 @@ export class Mesh {
     return entry;
   }
 
-  // Every outbound message goes through here so the counter stays honest.
   signal(peerId, msg) {
-    this.stats.sent++;
     // send() is async; a rejected broadcast must not vanish.
     try {
       const r = this.send(peerId, msg);
@@ -146,7 +141,6 @@ export class Mesh {
 
   async handleSignal(fromId, msg) {
     if (!msg || typeof msg !== "object") return;
-    this.stats.received++;
     try {
       await this.route(fromId, msg);
     } catch (err) {

@@ -9,24 +9,28 @@
                font: 14px/1.4 system-ui, sans-serif; }
   body { display: flex; flex-direction: column; }
 
-  #bar { display: none; flex: 0 0 auto; gap: 6px; padding: 6px;
+  #bar { display: flex; flex: 0 0 auto; gap: 6px; padding: 6px;
          background: #262626; border-bottom: 1px solid #3a3a3a; align-items: center; }
   #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
               white-space: nowrap; text-overflow: ellipsis; }
   #bar button { padding: 4px 8px; font-size: 12px; }
   #bar button.off { background: #6b2b2b; border-color: #6b2b2b; }
+  #mic, #cam, #leave, #popout2 { display: none; }
+  body.in-call #leave { display: inline-block; }
+  body.in-call.mode-p2p #mic, body.in-call.mode-p2p #cam { display: inline-block; }
+  body.in-call:not(.mode-p2p) #popout2 { display: inline-block; }
 
   #call { flex: 1 1 auto; width: 100%; border: 0; display: none; }
 
   /* Peer-to-peer video grid */
-  #grid { display: none; flex: 1 1 auto; overflow-y: auto; padding: 6px;
-          gap: 6px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  #grid { display: none; flex: 1 1 auto; overflow-y: auto; padding: 4px;
+          gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
           align-content: start; }
-  .tile { position: relative; background: #000; border-radius: 8px; overflow: hidden;
-          aspect-ratio: 4 / 3; }
+  .tile { position: relative; background: #000; border-radius: 6px; overflow: hidden;
+          aspect-ratio: 4 / 3; min-width: 0; }
   .tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tile b { position: absolute; left: 0; bottom: 0; right: 0; padding: 2px 6px;
-            font: 500 11px system-ui; background: linear-gradient(transparent, #000c);
+  .tile b { position: absolute; left: 0; bottom: 0; right: 0; padding: 1px 4px;
+            font: 500 10px system-ui; background: linear-gradient(transparent, #000c);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile.waiting::after { content: attr(data-state); position: absolute; inset: 0;
             display: grid; place-items: center; font-size: 11px; opacity: .6; }
@@ -49,18 +53,6 @@
   .row { display: flex; gap: 6px; }
   .row button { flex: 0 0 auto; }
 
-  /* The bar span is clipped to nothing next to four buttons at 420px, so the
-     diagnostics get their own full-width, wrapping, selectable block. */
-  #diag { display: none; flex: 0 0 auto; padding: 6px 8px; background: #101010;
-          border-bottom: 1px solid #3a3a3a; font: 11px/1.45 ui-monospace, monospace;
-          color: #9ad; white-space: pre-wrap; word-break: break-word;
-          user-select: text; -webkit-user-select: text; }
-  #copyDiag { margin-top: 4px; padding: 3px 8px; font-size: 11px; }
-
-  /* Always reachable, including before joining a call. */
-  #lock { position: fixed; top: 4px; right: 4px; z-index: 11; padding: 2px 6px;
-          font-size: 13px; line-height: 1.2; background: #2c2c2ccc; }
-
   /* Resize grip, only present while the panel is unlocked. */
   #grip { display: none; position: fixed; right: 0; bottom: 0; width: 18px; height: 18px;
           cursor: nwse-resize; z-index: 10; touch-action: none;
@@ -79,14 +71,13 @@
 <div id="boot">Connecting to Owlbear&hellip;</div>
 
 <div id="bar">
+  <button id="lock" title="Unlock to resize the panel">🔓</button>
   <span id="barLabel"></span>
   <button id="mic" title="Mute microphone">Mic</button>
   <button id="cam" title="Turn off camera">Cam</button>
   <button id="popout2">Pop out</button>
   <button id="leave">Leave</button>
 </div>
-
-<div id="diag"><span id="diagText"></span><br><button id="copyDiag">Copy</button></div>
 
 <div id="grid"></div>
 
@@ -126,7 +117,6 @@
   </div>
 </div>
 
-<button id="lock" title="Unlock to resize the panel">🔓</button>
 <div id="grip" title="Drag to resize"></div>
 
 <iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
@@ -157,11 +147,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=14";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=14";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=14";
+import OBR from "./obr-sdk.js?v=15";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=15";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=15";
 
-const BUILD = "14";  // bump together with the ?v= on the imports above
+const BUILD = "15";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -190,7 +180,6 @@ try {
       let mesh = null;        // p2p mode
       let names = new Map();  // connectionId -> display name
       let lastError = null;   // sticky, so a failed join stays readable
-      let hellos = 0;         // tiny broadcast pings received, see updateDiag
       let signalErr = "";     // most recent signalling failure
 
       // ---------- hosted (iframe) mode ----------
@@ -220,9 +209,7 @@ try {
         $("join").disabled = !sharedLink && !usingP2P() && !hostedUrl();
         $("build").textContent = "build " + BUILD;
         $("popout").style.display = usingP2P() ? "none" : "block";
-        $("popout2").style.display = usingP2P() ? "none" : "inline-block";
-        $("mic").style.display = usingP2P() ? "inline-block" : "none";
-        $("cam").style.display = usingP2P() ? "inline-block" : "none";
+        document.body.classList.toggle("mode-p2p", usingP2P());
       }
 
       const readMeta = (meta) => {
@@ -250,8 +237,10 @@ try {
       // ---------- view switching ----------
       function showView(view, url) {
         const hosted = view === "hosted";
+        // The bar is always present so the lock stays reachable; CSS decides
+        // which controls belong to which view, so nothing can overlap.
+        document.body.classList.toggle("in-call", view !== "setup");
         $("setup").style.display = view === "setup" ? "flex" : "none";
-        $("bar").style.display = view === "setup" ? "none" : "flex";
         $("call").style.display = hosted ? "block" : "none";
         $("grid").style.display = view === "p2p" ? "grid" : "none";
         const target = hosted ? url : "about:blank";
@@ -275,20 +264,14 @@ try {
         return el;
       }
 
-      // Distinguishes "no signalling arrived" (recv 0 -> broadcast is the
-      // problem) from "signalling fine but ICE cannot connect" (recv > 0 with
-      // peers stuck in checking/failed -> needs TURN).
-      function updateDiag() {
+      // Peers only need to know if something went wrong; the detailed counters
+      // were debugging scaffolding and are gone.
+      function updateBar() {
         if (!mesh) return;
-        const states = [...mesh.peers.entries()]
-          .map(([id, e]) => (names.get(id) || id.slice(0, 4)) + ":" + e.pc.iceConnectionState);
-        const text =
-          `build ${BUILD}  hello ${hellos}  sent ${mesh.stats.sent}  recv ${mesh.stats.received}\n` +
-          "peers: " + (states.length ? states.join("  ") : "none") +
-          (signalErr ? "\nerror: " + signalErr : "");
-        $("barLabel").textContent = `hello ${hellos} snt ${mesh.stats.sent} rcv ${mesh.stats.received}`;
-        $("diagText").textContent = text;
-        $("diag").style.display = "block";
+        const others = mesh.peers.size;
+        $("barLabel").textContent = signalErr
+          ? signalErr
+          : others ? `${others} connected` : "waiting for others";
       }
 
       const sendSignal = (toId, msg) =>
@@ -326,11 +309,11 @@ try {
             if (v.srcObject !== remoteStream) v.srcObject = remoteStream;
           },
           onPeerEnd: (peerId) => document.getElementById("tile-" + peerId)?.remove(),
-          onError: (peerId, err) => { signalErr = err; updateDiag(); },
+          onError: (peerId, err) => { signalErr = err; updateBar(); },
           onState: (peerId, state) => {
             const el = document.getElementById("tile-" + peerId);
             if (el) el.dataset.state = state;
-            updateDiag();
+            updateBar();
           },
           localStream: stream,
         });
@@ -342,32 +325,17 @@ try {
         mv.srcObject = stream;
         mv.muted = true;
 
-        updateDiag();
+        updateBar();
         refreshToggles();
         showView("p2p");
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {
           const d = event.data;
           if (!d) return;
-          // A tiny payload broadcast to everyone. If hellos arrive but the much
-          // larger SDP offers do not, the channel has a size limit rather than
-          // being broken outright.
-          if (d.to === "*") {
-            hellos++;
-            // Answer a hello once, so whoever joined first also sees a round
-            // trip. Acks are never answered, so this cannot loop.
-            if (d.msg && d.msg.type === "hello") {
-              sendSignal("*", { type: "hello-ack" });
-            }
-            updateDiag();
-            return;
-          }
           if (d.to !== myId) return;
           // The sender identity comes from Owlbear, not from the payload.
           mesh.handleSignal(event.connectionId, d.msg);
         });
-
-        sendSignal("*", { type: "hello" });
 
         const syncParty = (players) => {
           names = new Map(players.map((p) => [p.connectionId, p.name]));
@@ -377,7 +345,7 @@ try {
           for (const id of inCall) {
             if (id !== myId) tile(id, names.get(id) || "Player");
           }
-          if (mesh) { mesh.syncPeers(inCall); updateDiag(); }
+          if (mesh) { mesh.syncPeers(inCall); updateBar(); }
         };
         unsubParty = OBR.party.onChange(syncParty);
         syncParty(await OBR.party.getPlayers());
@@ -391,7 +359,6 @@ try {
         if (unsubParty) { unsubParty(); unsubParty = null; }
         if (mesh) { mesh.close(); mesh = null; }
         $("grid").innerHTML = "";
-        $("diag").style.display = "none";
         refreshToggles();
         // Never let a failed metadata write throw out of leave: the camera is
         // already released and the UI must still return to the setup view.
@@ -483,24 +450,6 @@ try {
           $("fallback").select();
         }
       };
-      $("copyDiag").onclick = async () => {
-        const t = $("diagText").textContent;
-        try {
-          await navigator.clipboard.writeText(t);
-          $("copyDiag").textContent = "Copied";
-        } catch {
-          // Clipboard is often blocked in a cross-origin iframe; selecting the
-          // text is the reliable fallback.
-          const r = document.createRange();
-          r.selectNodeContents($("diagText"));
-          const sel = getSelection();
-          sel.removeAllRanges();
-          sel.addRange(r);
-          $("copyDiag").textContent = "Selected, press Ctrl+C";
-        }
-        setTimeout(() => { $("copyDiag").textContent = "Copy"; }, 4000);
-      };
-
       $("popout").onclick = popout;
       $("popout2").onclick = popout;
 
@@ -508,17 +457,37 @@ try {
       // Owlbear owns the popover, so resizing means asking it to change the
       // action size. Screen coordinates are used because the iframe itself is
       // being resized under the pointer, which makes client coordinates drift.
-      const SIZE = { minW: 260, maxW: 1400, minH: 200, maxH: 1000, w: 420, h: 540 };
+      // No upper bound. The floor only exists so the panel can never be shrunk
+      // to something with no grip left to drag back.
+      const SIZE = { minW: 180, maxW: 100000, minH: 140, maxH: 100000, w: 420, h: 540 };
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
 
       let panelW = clamp(Number(recall("tableVideoW")) || SIZE.w, SIZE.minW, SIZE.maxW);
       let panelH = clamp(Number(recall("tableVideoH")) || SIZE.h, SIZE.minH, SIZE.maxH);
       let locked = recall("tableVideoLocked") !== "0";
 
-      const applySize = () => {
-        OBR.action.setWidth(panelW).catch(() => {});
-        OBR.action.setHeight(panelH).catch(() => {});
-      };
+      // Each setter is a round trip to Owlbear which relayouts the popover, so
+      // firing both every frame is what made dragging feel like treacle. Only
+      // send a dimension that actually changed, and no more than once per
+      // interval, with a trailing call so the final size is never dropped.
+      let appliedW = null, appliedH = null;
+      let sizeTimer = null, sizeDirty = false;
+
+      function flushSize() {
+        sizeDirty = false;
+        if (panelW !== appliedW) { appliedW = panelW; OBR.action.setWidth(panelW).catch(() => {}); }
+        if (panelH !== appliedH) { appliedH = panelH; OBR.action.setHeight(panelH).catch(() => {}); }
+      }
+
+      const APPLY_MS = 90;
+      function applySize() {
+        if (sizeTimer) { sizeDirty = true; return; }
+        flushSize();
+        sizeTimer = setTimeout(() => {
+          sizeTimer = null;
+          if (sizeDirty) applySize();
+        }, APPLY_MS);
+      }
 
       function renderLock() {
         document.body.classList.toggle("unlocked", !locked);
@@ -535,7 +504,6 @@ try {
       };
 
       let drag = null;
-      let pending = false;
       $("grip").addEventListener("pointerdown", (e) => {
         if (locked) return;
         drag = { x: e.screenX, y: e.screenY, w: panelW, h: panelH };
@@ -548,10 +516,7 @@ try {
         if (!drag) return;
         panelW = clamp(drag.w + (e.screenX - drag.x), SIZE.minW, SIZE.maxW);
         panelH = clamp(drag.h + (e.screenY - drag.y), SIZE.minH, SIZE.maxH);
-        // One resize per frame; each one is a round trip to Owlbear.
-        if (pending) return;
-        pending = true;
-        requestAnimationFrame(() => { pending = false; applySize(); });
+        applySize();
       });
       const endDrag = () => {
         if (!drag) return;
