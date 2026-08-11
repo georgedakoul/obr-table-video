@@ -68,5 +68,9 @@ are in the [disclosure section of the README](https://github.com/georgedakoul/ob
 Please report bugs or ask questions on
 [GitHub Issues](https://github.com/georgedakoul/obr-table-video/issues).
 
+The extension is free and always will be. If you would like to help cover the
+relay server that lets players on restrictive networks connect, you can
+[sponsor it on GitHub](https://github.com/sponsors/georgedakoul).
+
 Unofficial and community made. Not affiliated with, endorsed by or sponsored by
 Owlbear Rodeo. MIT licensed.

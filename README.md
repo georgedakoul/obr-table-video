@@ -127,6 +127,13 @@ Anyone who has your Owlbear room link can join the video call. That is the same
 trust model Owlbear itself uses for rooms. Do not treat a call as private from
 someone who already has the room link.
 
+## Support the project
+
+This costs nothing to run today: Cloudflare's free tier serves the files and the
+TURN relay is a free public service. If it gets enough use that the relay needs
+paying for, [GitHub Sponsors](https://github.com/sponsors/georgedakoul) is what
+funds it. Entirely optional; nothing here is paywalled and nothing ever will be.
+
 ## Warranty
 
 None. See [LICENSE](LICENSE). This is a hobby project provided as-is; do not rely
