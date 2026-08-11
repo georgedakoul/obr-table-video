@@ -152,17 +152,27 @@ try {
       $("server").oninput = syncHostRow;
       syncHostRow();
 
+      let joinedUrl = null;
+
       function show(joined, url) {
         $("setup").style.display = joined ? "none" : "flex";
         $("call").style.display = joined ? "block" : "none";
         $("bar").style.display = joined ? "flex" : "none";
-        $("call").src = joined ? url : "about:blank";
+        // Only touch src when the target actually changes. Reassigning the same
+        // url reloads the iframe, which drops the old connection and opens a new
+        // one -- the room briefly shows two of you.
+        if ($("call").src !== (joined ? url : "about:blank")) {
+          $("call").src = joined ? url : "about:blank";
+        }
+        joinedUrl = joined ? url : null;
         if (joined) $("barLabel").textContent = new URL(url).host;
       }
 
       $("join").onclick = () => {
         const url = currentUrl();
-        if (url) show(true, url);
+        if (!url) return;
+        if (joinedUrl === url) return; // already in this call, don't dial twice
+        show(true, url);
       };
 
       // The call ending (or the service booting us) leaves a dead iframe. Leave
@@ -172,7 +182,12 @@ try {
       const popout = () => {
         const url = currentUrl();
         if (!url) return;
-        if (!window.open(url, "_blank", "width=960,height=680")) {
+        if (window.open(url, "_blank", "width=960,height=680")) {
+          // Hand the call over to the new window rather than running both,
+          // which would put two of you in the room. Only after the window
+          // actually opened, so a blocked popup never costs you the call.
+          if (joinedUrl !== null) show(false);
+        } else {
           // Popup blocked by the iframe sandbox: hand over the link instead.
           $("note").textContent = "Popup blocked. Copy this link into a new tab:";
           $("fallback").value = url;
