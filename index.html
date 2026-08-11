@@ -49,6 +49,14 @@
   .row { display: flex; gap: 6px; }
   .row button { flex: 0 0 auto; }
 
+  /* The bar span is clipped to nothing next to four buttons at 420px, so the
+     diagnostics get their own full-width, wrapping, selectable block. */
+  #diag { display: none; flex: 0 0 auto; padding: 6px 8px; background: #101010;
+          border-bottom: 1px solid #3a3a3a; font: 11px/1.45 ui-monospace, monospace;
+          color: #9ad; white-space: pre-wrap; word-break: break-word;
+          user-select: text; -webkit-user-select: text; }
+  #copyDiag { margin-top: 4px; padding: 3px 8px; font-size: 11px; }
+
   #boot { flex: 1 1 auto; padding: 16px; font-size: 13px; }
   #boot code { display: block; margin-top: 8px; padding: 8px; background: #000;
                border-radius: 6px; font-size: 11px; white-space: pre-wrap;
@@ -66,6 +74,8 @@
   <button id="popout2">Pop out</button>
   <button id="leave">Leave</button>
 </div>
+
+<div id="diag"><span id="diagText"></span><br><button id="copyDiag">Copy</button></div>
 
 <div id="grid"></div>
 
@@ -133,11 +143,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=11";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=11";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=11";
+import OBR from "./obr-sdk.js?v=12";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=12";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=12";
 
-const BUILD = "11";  // bump together with the ?v= on the imports above
+const BUILD = "12";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -258,10 +268,13 @@ try {
         if (!mesh) return;
         const states = [...mesh.peers.entries()]
           .map(([id, e]) => (names.get(id) || id.slice(0, 4)) + ":" + e.pc.iceConnectionState);
-        $("barLabel").textContent =
-          `b${BUILD} hello ${hellos} sent ${mesh.stats.sent} recv ${mesh.stats.received}` +
-          (states.length ? " | " + states.join(" ") : " | alone") +
-          (signalErr ? " | " + signalErr : "");
+        const text =
+          `build ${BUILD}  hello ${hellos}  sent ${mesh.stats.sent}  recv ${mesh.stats.received}\n` +
+          "peers: " + (states.length ? states.join("  ") : "none") +
+          (signalErr ? "\nerror: " + signalErr : "");
+        $("barLabel").textContent = `hello ${hellos} snt ${mesh.stats.sent} rcv ${mesh.stats.received}`;
+        $("diagText").textContent = text;
+        $("diag").style.display = "block";
       }
 
       const sendSignal = (toId, msg) =>
@@ -361,6 +374,7 @@ try {
         if (unsubParty) { unsubParty(); unsubParty = null; }
         if (mesh) { mesh.close(); mesh = null; }
         $("grid").innerHTML = "";
+        $("diag").style.display = "none";
         // Never let a failed metadata write throw out of leave: the camera is
         // already released and the UI must still return to the setup view.
         await OBR.player.setMetadata({ [META_IN_CALL]: undefined }).catch(() => {});
@@ -426,6 +440,24 @@ try {
           $("fallback").select();
         }
       };
+      $("copyDiag").onclick = async () => {
+        const t = $("diagText").textContent;
+        try {
+          await navigator.clipboard.writeText(t);
+          $("copyDiag").textContent = "Copied";
+        } catch {
+          // Clipboard is often blocked in a cross-origin iframe; selecting the
+          // text is the reliable fallback.
+          const r = document.createRange();
+          r.selectNodeContents($("diagText"));
+          const sel = getSelection();
+          sel.removeAllRanges();
+          sel.addRange(r);
+          $("copyDiag").textContent = "Selected, press Ctrl+C";
+        }
+        setTimeout(() => { $("copyDiag").textContent = "Copy"; }, 4000);
+      };
+
       $("popout").onclick = popout;
       $("popout2").onclick = popout;
 
