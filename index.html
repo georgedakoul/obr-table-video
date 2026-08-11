@@ -68,8 +68,8 @@
   .tile:hover .cut, body.touched .tile .cut { opacity: 1; }
   .tile.silenced .cut { opacity: 1; background: #8c2f2fe6; }
   .tile.silenced { outline: 2px solid #8c2f2f; outline-offset: -2px; }
-  /* Relayed peers cost someone bandwidth, so mark them faintly. */
-  .tile.relayed b::after { content: " \21BB"; opacity: .8; }
+  /* Relayed peers cost someone bandwidth, so tint the label. */
+  .tile.relayed b { color: #ffcf8b; }
   #cutBanner { display: none; flex: 0 0 auto; padding: 6px 8px; background: #8c2f2f;
                color: #fff; font-size: 12px; text-align: center; }
   body.silenced-me #cutBanner { display: block; }
@@ -178,11 +178,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=28";
-import { sanitizeLink } from "./callurl.js?v=28";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=28";
+import OBR from "./obr-sdk.js?v=29";
+import { sanitizeLink } from "./callurl.js?v=29";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=29";
 
-const BUILD = "28";  // bump together with the ?v= on the imports above
+const BUILD = "29";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -216,7 +216,8 @@ try {
       let lastError = null;   // sticky, so a failed join stays readable
       let signalErr = "";     // most recent signalling failure
       let silenced = new Set(); // connection ids the GM has cut off
-      let linkTimer = null;   // refreshes the per-tile connection tooltips
+      let linkTimer = null;   // refreshes the per-tile connection labels
+      const linkKind = new Map(); // peerId -> "direct" | "relay"
 
       // A GM-set shared link replaces the built-in call with an iframe of
       // whatever service they chose. With no link, it is peer to peer.
@@ -293,9 +294,19 @@ try {
           }
           $("grid").appendChild(el);
         }
-        el.querySelector("b").textContent = label;
+        el.dataset.name = label;
+        paintLabel(el, id);
         paintSilence(el, id);
         return el;
+      }
+
+      // The connection type goes in the visible label, not just a tooltip: the
+      // GM's cut button sits over the middle of the tile with its own tooltip,
+      // so hovering for it is unreliable.
+      function paintLabel(el, id) {
+        const kind = linkKind.get(id);
+        el.querySelector("b").textContent =
+          kind ? `${el.dataset.name} \u00B7 ${kind}` : el.dataset.name;
       }
 
       // Hover text only, so it stays out of the way: says whether a peer is
@@ -315,8 +326,9 @@ try {
         const kind = info.relayed ? "relay" : info.local;
         el.title = (names.get(peerId) || "Player") + " \u2014 " +
           (LINK_TEXT[kind] || "connected");
-        // A relay is the one case worth seeing without hovering.
+        linkKind.set(peerId, info.relayed ? "relay" : "direct");
         el.classList.toggle("relayed", !!info.relayed);
+        paintLabel(el, peerId);
       }
 
       function paintSilence(el, id) {
@@ -399,7 +411,10 @@ try {
             const v = el.querySelector("video");
             if (v.srcObject !== remoteStream) v.srcObject = remoteStream;
           },
-          onPeerEnd: (peerId) => document.getElementById("tile-" + peerId)?.remove(),
+          onPeerEnd: (peerId) => {
+            linkKind.delete(peerId);
+            document.getElementById("tile-" + peerId)?.remove();
+          },
           onError: (peerId, err) => { signalErr = err; updateBar(); },
           onState: (peerId, state) => {
             const el = document.getElementById("tile-" + peerId);
@@ -474,6 +489,7 @@ try {
         if (unsubParty) { unsubParty(); unsubParty = null; }
         clearInterval(linkTimer);
         linkTimer = null;
+        linkKind.clear();
         if (mesh) { mesh.close(); mesh = null; }
         $("grid").innerHTML = "";
         refreshToggles();
