@@ -43,12 +43,31 @@ edit those three lines to point at its own host. They are absolute rather than
 relative because GitHub Pages serves projects from a subpath, where a leading
 `/` resolves to the wrong place.
 
-## Video server
+## Video service
 
-The **Video server** field defaults to `meet.jit.si`. If that instance asks you
-to sign in as a moderator, swap in a public open instance such as
-`meet.ffmuc.net`, or your own self-hosted Jitsi. The choice is remembered per
-browser.
+Pick one in the **Video service** dropdown. The choice is remembered per browser.
+
+- **Element Call** (default) — `call.element.io`. Free, guest access with just a
+  display name, no time limit on embedded calls.
+- **Jitsi** — the server is editable. Note that **`meet.jit.si` deliberately
+  disconnects embedded calls after 5 minutes**: it prints "embedding meet.jit.si
+  is intended only for demonstration purposes" and drops the call. That is 8x8's
+  policy for their free demo server, not a setting this extension can change.
+
+If you want Jitsi specifically with no time limit, you have three options:
+
+| Option | Cost | Needs a backend |
+|---|---|---|
+| Use the **Pop out** button with `meet.jit.si` | free | no |
+| **JaaS** free tier (25 monthly active users, unlimited minutes) | free | yes — a JWT signer |
+| Self-host Jitsi on a VPS | ~5/mo | no, but you run the server |
+
+The pop-out trick works because the 5-minute cut applies only to *embedded*
+mode. A call in its own browser window is not embedded, so it runs untouched.
+
+Community-run Jitsi instances mostly refuse embedding now — `meet.ffmuc.net`,
+for example, restricts `frame-ancestors` to an allowlist. Pointing this
+extension at someone's donated server is also poor manners.
 
 ## Local development
 

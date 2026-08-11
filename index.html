@@ -6,25 +6,47 @@
 <title>Table Video</title>
 <style>
   html, body { margin: 0; height: 100%; background: #1e1e1e; color: #eee;
-                font: 14px/1.4 system-ui, sans-serif; }
-  #call { width: 100%; height: 100%; border: 0; display: none; }
-  #setup { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+               font: 14px/1.4 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+
+  /* Always present once joined, so a dead call can never leave a blank panel. */
+  #bar { display: none; flex: 0 0 auto; gap: 6px; padding: 6px;
+         background: #262626; border-bottom: 1px solid #3a3a3a; align-items: center; }
+  #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
+              white-space: nowrap; text-overflow: ellipsis; }
+  #bar button { padding: 4px 8px; font-size: 12px; }
+
+  #call { flex: 1 1 auto; width: 100%; border: 0; display: none; }
+
+  #setup { flex: 1 1 auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
   label { font-size: 12px; opacity: .65; }
-  input, button { padding: 8px 10px; font: inherit; border-radius: 6px;
-                  border: 1px solid #4a4a4a; background: #2c2c2c; color: #eee; }
+  input, button, select { padding: 8px 10px; font: inherit; border-radius: 6px;
+                          border: 1px solid #4a4a4a; background: #2c2c2c; color: #eee; }
   button { cursor: pointer; }
   button:hover { background: #383838; }
   #join { background: #bb99ff; color: #1e1e1e; border-color: #bb99ff; font-weight: 600; }
   #join:hover { background: #cdb3ff; }
   p { margin: 0; font-size: 12px; opacity: .6; }
-  #fallback { display: none; }
+  #hostRow, #fallback { display: none; }
 </style>
 </head>
 <body>
 
+<div id="bar">
+  <span id="barLabel"></span>
+  <button id="popout2">Pop out</button>
+  <button id="leave">Leave</button>
+</div>
+
 <div id="setup">
-  <label for="server">Video server</label>
-  <input id="server" value="meet.jit.si" spellcheck="false" autocapitalize="off">
+  <label for="provider">Video service</label>
+  <select id="provider"></select>
+
+  <div id="hostRow">
+    <label for="server">Jitsi server</label>
+    <input id="server" spellcheck="false" autocapitalize="off" style="width:100%">
+  </div>
+
   <button id="join">Join video</button>
   <button id="popout">Open in separate window</button>
   <p id="note">Loading&hellip;</p>
@@ -35,7 +57,7 @@
 
 <script type="module">
 import OBR from "https://esm.sh/@owlbear-rodeo/sdk@3.1.0";
-import { callUrl } from "./callurl.js";
+import { callUrl, PROVIDERS } from "./callurl.js";
 
 // ponytail: localStorage throws in cross-site iframes on Safari, so it is
 // optional convenience only, never load-bearing.
@@ -50,24 +72,50 @@ OBR.onReady(async () => {
   // the video too, which matches how Owlbear itself shares rooms.
   const callRoom = "obr-table-" + OBR.room.id;
 
-  $("server").value = recall("tableVideoServer") || "meet.jit.si";
+  for (const [key, p] of Object.entries(PROVIDERS)) {
+    $("provider").add(new Option(p.label, key));
+  }
+  $("provider").value = recall("tableVideoProvider") || "element";
+  $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
   $("note").textContent = "Everyone in this Owlbear room joins the same call.";
 
+  function syncHostRow() {
+    const p = PROVIDERS[$("provider").value];
+    $("hostRow").style.display = p && p.editableHost ? "block" : "none";
+  }
+  $("provider").onchange = syncHostRow;
+  syncHostRow();
+
   function currentUrl() {
-    const url = callUrl($("server").value, callRoom, name);
-    if (url) remember("tableVideoServer", $("server").value.trim());
+    const key = $("provider").value;
+    const p = PROVIDERS[key];
+    const host = p.editableHost ? $("server").value : p.host;
+    const url = callUrl(key, host, callRoom, name);
+    if (url) {
+      remember("tableVideoProvider", key);
+      if (p.editableHost) remember("tableVideoJitsiHost", host.trim());
+    }
     return url;
+  }
+
+  function show(joined, url) {
+    $("setup").style.display = joined ? "none" : "flex";
+    $("call").style.display = joined ? "block" : "none";
+    $("bar").style.display = joined ? "flex" : "none";
+    $("call").src = joined ? url : "about:blank";
+    if (joined) $("barLabel").textContent = new URL(url).host;
   }
 
   $("join").onclick = () => {
     const url = currentUrl();
-    if (!url) return;
-    $("setup").style.display = "none";
-    $("call").src = url;
-    $("call").style.display = "block";
+    if (url) show(true, url);
   };
 
-  $("popout").onclick = () => {
+  // The call ending (or the service booting us) leaves a dead iframe. Leave
+  // puts the controls back instead of stranding the user on a blank panel.
+  $("leave").onclick = () => show(false);
+
+  const popout = () => {
     const url = currentUrl();
     if (!url) return;
     if (!window.open(url, "_blank", "width=960,height=680")) {
@@ -78,6 +126,8 @@ OBR.onReady(async () => {
       $("fallback").select();
     }
   };
+  $("popout").onclick = popout;
+  $("popout2").onclick = popout;
 });
 </script>
 
