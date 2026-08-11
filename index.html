@@ -89,6 +89,12 @@
   .row { display: flex; gap: 6px; }
   .row button { flex: 0 0 auto; }
 
+  /* Offset left of the resize grip so the two never sit on top of each other.
+     Hidden during a call to keep the video clean. */
+  #ver { position: fixed; right: 22px; bottom: 2px; font-size: 10px; opacity: .35;
+         pointer-events: none; user-select: none; }
+  body.in-call #ver { display: none; }
+
   /* Resize grip, only present while the panel is unlocked. */
   #grip { display: none; position: fixed; right: 0; bottom: 0; width: 18px; height: 18px;
           cursor: nwse-resize; z-index: 10; touch-action: none;
@@ -107,7 +113,8 @@
 <div id="boot">Connecting to Owlbear&hellip;</div>
 
 <div id="bar">
-  <button id="lock" title="Unlock to resize the panel">🔓</button>
+  <div id="ver"></div>
+<button id="lock" title="Unlock to resize the panel">🔓</button>
   <span id="barLabel"></span>
   <button id="swapCut" title="Swap who can hear: everyone cut off is let back in, everyone else is cut off">⇄</button>
   <button id="mic" title="Mute microphone">Mic</button>
@@ -124,8 +131,6 @@
   <button id="join">Join video</button>
 
   <hr>
-
-  <p id="build"></p>
 
 </div>
 
@@ -158,10 +163,10 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=30";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=30";
+import OBR from "./obr-sdk.js?v=31";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=31";
 
-const BUILD = "30";  // bump together with the ?v= on the imports above
+const BUILD = "31";  // bump together with the ?v= on the imports above
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
 // this and stops sending that peer audio, so it does not rely on the excluded
@@ -201,7 +206,6 @@ try {
         $("status").textContent = lastError ? lastError
           : "Direct connection between players, no server. Best up to about 6 people.";
         $("join").disabled = false;
-        $("build").textContent = "build " + BUILD;
       }
 
       const readMeta = (meta) => {
@@ -610,6 +614,7 @@ try {
         el.addEventListener("pointerdown", revealControls);
       }
 
+      $("ver").textContent = "v" + BUILD;
       renderLock();
       applySize();
 
