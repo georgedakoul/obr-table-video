@@ -18,19 +18,32 @@
 
   #call { flex: 1 1 auto; width: 100%; border: 0; display: none; }
 
-  #setup { flex: 1 1 auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #setup { flex: 1 1 auto; padding: 16px; display: none; flex-direction: column; gap: 10px;
+           overflow-y: auto; }
   label { font-size: 12px; opacity: .65; }
   input, button, select { padding: 8px 10px; font: inherit; border-radius: 6px;
                           border: 1px solid #4a4a4a; background: #2c2c2c; color: #eee; }
+  input { width: 100%; box-sizing: border-box; }
   button { cursor: pointer; }
   button:hover { background: #383838; }
   #join { background: #bb99ff; color: #1e1e1e; border-color: #bb99ff; font-weight: 600; }
   #join:hover { background: #cdb3ff; }
   p { margin: 0; font-size: 12px; opacity: .6; }
   #hostRow, #fallback { display: none; }
+
+  #boot { flex: 1 1 auto; padding: 16px; font-size: 13px; }
+  #boot code { display: block; margin-top: 8px; padding: 8px; background: #000;
+               border-radius: 6px; font-size: 11px; white-space: pre-wrap;
+               word-break: break-all; color: #ff9b9b; }
+  details { margin-top: 4px; font-size: 12px; opacity: .7; }
+  summary { cursor: pointer; }
 </style>
 </head>
 <body>
+
+<!-- Shown until the SDK connects. Replaced by an error if it never does, so a
+     failure is never a silent blank panel. -->
+<div id="boot">Connecting to Owlbear&hellip;</div>
 
 <div id="bar">
   <span id="barLabel"></span>
@@ -44,16 +57,46 @@
 
   <div id="hostRow">
     <label for="server">Jitsi server</label>
-    <input id="server" spellcheck="false" autocapitalize="off" style="width:100%">
+    <input id="server" spellcheck="false" autocapitalize="off">
   </div>
 
   <button id="join">Join video</button>
   <button id="popout">Open in separate window</button>
-  <p id="note">Loading&hellip;</p>
+  <p id="note"></p>
   <input id="fallback" readonly>
+
+  <details>
+    <summary>Call link (share if a player cannot join)</summary>
+    <p id="roomLabel" style="margin-top:6px"></p>
+    <input id="shareLink" readonly>
+  </details>
 </div>
 
 <iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
+
+<!-- Classic script: runs even if the module below fails to load at all (CDN
+     down, blocked, syntax error), which a module-scoped handler cannot catch. -->
+<script>
+  window.__tableVideoFail = function (what, detail) {
+    var b = document.getElementById("boot");
+    if (!b || window.__tableVideoReady) return;
+    b.innerHTML = "<b>Table Video could not start.</b><br>" + what;
+    if (detail) { var c = document.createElement("code"); c.textContent = detail; b.appendChild(c); }
+  };
+  window.addEventListener("error", function (e) {
+    window.__tableVideoFail("A script error occurred.", e.message + " @ " + e.filename);
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    window.__tableVideoFail("A background task failed.", String(e.reason));
+  });
+  setTimeout(function () {
+    window.__tableVideoFail(
+      "No response from Owlbear after 10 seconds. Close this panel and reopen it. " +
+      "If it keeps happening, disable and re-enable the extension in the room menu.",
+      "obrref param present: " + (new URLSearchParams(location.search).has("obrref"))
+    );
+  }, 10000);
+</script>
 
 <script type="module">
 import OBR from "https://esm.sh/@owlbear-rodeo/sdk@3.1.0";
@@ -66,69 +109,87 @@ const recall = (k) => { try { return localStorage.getItem(k); } catch { return n
 
 const $ = (id) => document.getElementById(id);
 
-OBR.onReady(async () => {
-  const name = await OBR.player.getName();
-  // Same Owlbear room => same call. Anyone with the Owlbear room link can join
-  // the video too, which matches how Owlbear itself shares rooms.
-  const callRoom = "obr-table-" + OBR.room.id;
+try {
+  OBR.onReady(async () => {
+    try {
+      window.__tableVideoReady = true;
+      $("boot").style.display = "none";
+      $("setup").style.display = "flex";
 
-  for (const [key, p] of Object.entries(PROVIDERS)) {
-    $("provider").add(new Option(p.label, key));
-  }
-  $("provider").value = recall("tableVideoProvider") || "element";
-  $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
-  $("note").textContent = "Everyone in this Owlbear room joins the same call.";
+      const name = await OBR.player.getName();
+      // OBR gives every client in the room the same room id (it arrives in the
+      // obrref query param), so this resolves to one shared call for everyone.
+      const callRoom = "obr-table-" + OBR.room.id;
 
-  function syncHostRow() {
-    const p = PROVIDERS[$("provider").value];
-    $("hostRow").style.display = p && p.editableHost ? "block" : "none";
-  }
-  $("provider").onchange = syncHostRow;
-  syncHostRow();
+      for (const [key, p] of Object.entries(PROVIDERS)) {
+        $("provider").add(new Option(p.label, key));
+      }
+      $("provider").value = recall("tableVideoProvider") || "element";
+      $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
+      $("note").textContent = "Everyone in this Owlbear room joins the same call.";
+      $("roomLabel").textContent = "Room: " + callRoom;
 
-  function currentUrl() {
-    const key = $("provider").value;
-    const p = PROVIDERS[key];
-    const host = p.editableHost ? $("server").value : p.host;
-    const url = callUrl(key, host, callRoom, name);
-    if (url) {
-      remember("tableVideoProvider", key);
-      if (p.editableHost) remember("tableVideoJitsiHost", host.trim());
+      function syncHostRow() {
+        const p = PROVIDERS[$("provider").value];
+        $("hostRow").style.display = p && p.editableHost ? "block" : "none";
+        const u = currentUrl();
+        if (u) $("shareLink").value = u;
+      }
+
+      function currentUrl() {
+        const key = $("provider").value;
+        const p = PROVIDERS[key];
+        const host = p.editableHost ? $("server").value : p.host;
+        const url = callUrl(key, host, callRoom, name);
+        if (url) {
+          remember("tableVideoProvider", key);
+          if (p.editableHost) remember("tableVideoJitsiHost", host.trim());
+        }
+        return url;
+      }
+
+      $("provider").onchange = syncHostRow;
+      $("server").oninput = syncHostRow;
+      syncHostRow();
+
+      function show(joined, url) {
+        $("setup").style.display = joined ? "none" : "flex";
+        $("call").style.display = joined ? "block" : "none";
+        $("bar").style.display = joined ? "flex" : "none";
+        $("call").src = joined ? url : "about:blank";
+        if (joined) $("barLabel").textContent = new URL(url).host;
+      }
+
+      $("join").onclick = () => {
+        const url = currentUrl();
+        if (url) show(true, url);
+      };
+
+      // The call ending (or the service booting us) leaves a dead iframe. Leave
+      // puts the controls back instead of stranding the user on a blank panel.
+      $("leave").onclick = () => show(false);
+
+      const popout = () => {
+        const url = currentUrl();
+        if (!url) return;
+        if (!window.open(url, "_blank", "width=960,height=680")) {
+          // Popup blocked by the iframe sandbox: hand over the link instead.
+          $("note").textContent = "Popup blocked. Copy this link into a new tab:";
+          $("fallback").value = url;
+          $("fallback").style.display = "block";
+          $("fallback").select();
+        }
+      };
+      $("popout").onclick = popout;
+      $("popout2").onclick = popout;
+    } catch (err) {
+      window.__tableVideoReady = false;
+      window.__tableVideoFail("Startup failed after connecting.", String(err && err.stack || err));
     }
-    return url;
-  }
-
-  function show(joined, url) {
-    $("setup").style.display = joined ? "none" : "flex";
-    $("call").style.display = joined ? "block" : "none";
-    $("bar").style.display = joined ? "flex" : "none";
-    $("call").src = joined ? url : "about:blank";
-    if (joined) $("barLabel").textContent = new URL(url).host;
-  }
-
-  $("join").onclick = () => {
-    const url = currentUrl();
-    if (url) show(true, url);
-  };
-
-  // The call ending (or the service booting us) leaves a dead iframe. Leave
-  // puts the controls back instead of stranding the user on a blank panel.
-  $("leave").onclick = () => show(false);
-
-  const popout = () => {
-    const url = currentUrl();
-    if (!url) return;
-    if (!window.open(url, "_blank", "width=960,height=680")) {
-      // Popup blocked by the iframe sandbox: hand over the link instead.
-      $("note").textContent = "Popup blocked. Copy this link into a new tab:";
-      $("fallback").value = url;
-      $("fallback").style.display = "block";
-      $("fallback").select();
-    }
-  };
-  $("popout").onclick = popout;
-  $("popout2").onclick = popout;
-});
+  });
+} catch (err) {
+  window.__tableVideoFail("Could not reach the Owlbear SDK.", String(err && err.stack || err));
+}
 </script>
 
 </body>
