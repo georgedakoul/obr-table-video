@@ -115,7 +115,7 @@
   <button id="leave">Leave</button>
 </div>
 
-<div id="cutBanner">You cannot hear the other players. The GM can still talk to you.</div>
+<div id="cutBanner">The GM has cut your audio. You cannot hear the table.</div>
 
 <div id="grid"></div>
 
@@ -185,11 +185,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=22";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=22";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=22";
+import OBR from "./obr-sdk.js?v=23";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=23";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=23";
 
-const BUILD = "22";  // bump together with the ?v= on the imports above
+const BUILD = "23";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -325,8 +325,8 @@ try {
         if (cut) {
           cut.textContent = off ? "🔇" : "🔊";
           cut.title = off
-            ? "This player cannot hear the other players. Click to let them hear again."
-            : "Stop this player hearing the other players. They will still hear you.";
+            ? "This player cannot hear anyone. Click to let them hear again."
+            : "Stop this player hearing the table, you included";
         }
       }
 
@@ -337,11 +337,10 @@ try {
       }
 
       // Applies whatever the GM has set, on every client. That is what makes it
-      // stick: each player stops sending audio to the excluded player.
-      // The GM is deliberately exempt, so a player taken aside still hears the
-      // GM while the rest of the table is hidden from them.
+      // stick: every peer, the GM included, stops sending audio to the excluded
+      // player, so they hear nobody at all.
       function applySilenced() {
-        if (mesh) mesh.setSilenced(isGM ? [] : silenced);
+        if (mesh) mesh.setSilenced(silenced);
         document.body.classList.toggle("silenced-me", silenced.has(myId));
         for (const el of $("grid").querySelectorAll(".tile")) {
           paintSilence(el, el.id.slice("tile-".length));
