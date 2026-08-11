@@ -166,6 +166,53 @@ const stable = replaced.length;
 m2.setSilenced([]);
 assert.equal(replaced.length, stable, "no redundant replaceTrack when nothing changed");
 
+// --- connectionType reads the nominated pair ----------------------------
+// A stats report is Map-like: forEach over entries plus get() by id.
+const report = (entries) => {
+  const m = new Map(Object.entries(entries));
+  return { forEach: (f) => m.forEach(f), get: (k) => m.get(k) };
+};
+
+const statsMesh = new Mesh({ selfId: "m", send: () => {}, onTrack: () => {}, onPeerEnd: () => {} });
+statsMesh.syncPeers(["m", "p"]);
+const pc = statsMesh.peers.get("p").pc;
+
+// Two succeeded pairs, only one nominated: the nominated one must win.
+// The nominated pair is listed FIRST and a stale succeeded pair after it, so
+// simply taking the last match would pick the wrong one.
+pc.getStats = async () => report({
+  live: { type: "candidate-pair", state: "succeeded", nominated: true,
+          localCandidateId: "lHost", remoteCandidateId: "rHost" },
+  stale: { type: "candidate-pair", state: "succeeded", nominated: false,
+           localCandidateId: "lRelay", remoteCandidateId: "rRelay" },
+  failed: { type: "candidate-pair", state: "failed",
+            localCandidateId: "lRelay", remoteCandidateId: "rRelay" },
+  lHost: { type: "local-candidate", candidateType: "host" },
+  rHost: { type: "remote-candidate", candidateType: "host" },
+  lRelay: { type: "local-candidate", candidateType: "relay" },
+  rRelay: { type: "remote-candidate", candidateType: "relay" },
+});
+assert.deepEqual(await statsMesh.connectionType("p"),
+  { local: "host", remote: "host", relayed: false }, "nominated pair wins");
+
+// A relay at either end counts as relayed.
+pc.getStats = async () => report({
+  live: { type: "candidate-pair", state: "succeeded", nominated: true,
+          localCandidateId: "l", remoteCandidateId: "r" },
+  l: { type: "local-candidate", candidateType: "srflx" },
+  r: { type: "remote-candidate", candidateType: "relay" },
+});
+assert.equal((await statsMesh.connectionType("p")).relayed, true, "remote relay counts");
+
+// Nothing succeeded yet, and a throwing getStats, both give null not a crash.
+pc.getStats = async () => report({
+  p1: { type: "candidate-pair", state: "checking", localCandidateId: "l", remoteCandidateId: "r" },
+});
+assert.equal(await statsMesh.connectionType("p"), null, "no succeeded pair yet");
+pc.getStats = async () => { throw new Error("boom"); };
+assert.equal(await statsMesh.connectionType("p"), null, "getStats failure is survivable");
+assert.equal(await statsMesh.connectionType("nobody"), null, "unknown peer");
+
 mesh.close();
 assert.equal(mesh.peers.size, 0, "close tears down every peer");
 assert.equal(closed.length, openCount + 1, "close() called on the remaining connection");

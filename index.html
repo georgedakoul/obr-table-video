@@ -176,11 +176,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=25";
-import { sanitizeLink } from "./callurl.js?v=25";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=25";
+import OBR from "./obr-sdk.js?v=26";
+import { sanitizeLink } from "./callurl.js?v=26";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=26";
 
-const BUILD = "25";  // bump together with the ?v= on the imports above
+const BUILD = "26";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -295,6 +295,25 @@ try {
         return el;
       }
 
+      // Hover text only, so it stays out of the way: says whether a peer is
+      // connected directly or is being relayed through the TURN server.
+      const LINK_TEXT = {
+        host: "direct, same network",
+        prflx: "direct",
+        srflx: "direct, through your routers",
+        relay: "relayed through the TURN server",
+      };
+
+      async function describeLink(peerId) {
+        if (!mesh) return;
+        const info = await mesh.connectionType(peerId);
+        const el = document.getElementById("tile-" + peerId);
+        if (!el || !info) return;
+        const kind = info.relayed ? "relay" : info.local;
+        el.title = (names.get(peerId) || "Player") + " \u2014 " +
+          (LINK_TEXT[kind] || "connected");
+      }
+
       function paintSilence(el, id) {
         const off = silenced.has(id);
         el.classList.toggle("silenced", off);
@@ -337,9 +356,8 @@ try {
       function updateBar() {
         if (!mesh) return;
         const others = mesh.peers.size;
-        $("barLabel").textContent = signalErr
-          ? signalErr
-          : others ? `${others} connected` : "waiting for others";
+        $("barLabel").textContent = signalErr ? signalErr
+          : others ? `${others} connected` : "";
       }
 
       const sendSignal = (toId, msg) =>
@@ -381,6 +399,7 @@ try {
           onState: (peerId, state) => {
             const el = document.getElementById("tile-" + peerId);
             if (el) el.dataset.state = state;
+            if (state === "connected") describeLink(peerId);
             updateBar();
           },
           localStream: stream,

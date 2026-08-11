@@ -141,6 +141,37 @@ export class Mesh {
     if (r && r.catch) r.catch((e) => this.onError(peerId, "silence: " + (e && e.message || e)));
   }
 
+  /**
+   * How a peer is actually connected, once ICE has settled. "host" is a direct
+   * link on the same network, "srflx" is direct through the routers, "relay"
+   * means the media is going through the TURN server.
+   */
+  async connectionType(peerId) {
+    const entry = this.peers.get(peerId);
+    if (!entry) return null;
+    let stats;
+    try { stats = await entry.pc.getStats(); } catch { return null; }
+
+    let pair = null;
+    stats.forEach((r) => {
+      if (r.type !== "candidate-pair" || r.state !== "succeeded") return;
+      // A nominated pair is the one in use; otherwise take any that succeeded.
+      if (r.nominated || !pair) pair = r;
+    });
+    if (!pair) return null;
+
+    const local = stats.get(pair.localCandidateId);
+    const remote = stats.get(pair.remoteCandidateId);
+    const localType = local && local.candidateType;
+    const remoteType = remote && remote.candidateType;
+    return {
+      local: localType || null,
+      remote: remoteType || null,
+      // Either end using a relay means the media is being relayed.
+      relayed: localType === "relay" || remoteType === "relay",
+    };
+  }
+
   signal(peerId, msg) {
     // send() is async; a rejected broadcast must not vanish.
     try {
