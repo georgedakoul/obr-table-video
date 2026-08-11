@@ -2,7 +2,7 @@
   "name": "Table Video",
   "version": "1.0.0",
   "manifest_version": 1,
-  "description": "Webcam video chat for everyone in your Owlbear Rodeo room.",
+  "description": "Peer-to-peer webcam video chat for your table. No server, no account.",
   "author": "George",
   "icon": "https://obr-table-video.pages.dev/icon.svg",
   "action": {
@@ -13,9 +13,21 @@
     "height": 540
   },
   "permissions": [
-    { "name": "camera", "reason": "Show your webcam to the rest of the table" },
-    { "name": "microphone", "reason": "Talk to the rest of the table" },
-    { "name": "autoplay", "reason": "Play the other players' audio and video" },
-    { "name": "display-capture", "reason": "Share your screen with the table" }
+    {
+      "name": "camera",
+      "reason": "Show your webcam to the rest of the table"
+    },
+    {
+      "name": "microphone",
+      "reason": "Talk to the rest of the table"
+    },
+    {
+      "name": "autoplay",
+      "reason": "Play the other players' audio and video without a click per tile"
+    },
+    {
+      "name": "display-capture",
+      "reason": "Only so a call service embedded via a shared call link can screen share"
+    }
   ]
 }
