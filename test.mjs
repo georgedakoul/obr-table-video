@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js";
-import { isInitiator, Mesh, RTC_CONFIG } from "./p2p.js";
+import { isInitiator, Mesh, RTC_CONFIG, plainSdp, plainCandidate } from "./p2p.js";
 
 // --- Jitsi url building --------------------------------------------------
 assert.equal(
@@ -60,15 +60,40 @@ for (const x of ids) {
   }
 }
 
+// --- Everything on the wire must survive structured clone ----------------
+// The Owlbear SDK broadcasts over postMessage. RTCSessionDescription and
+// RTCIceCandidate are platform objects that structured clone rejects with
+// "The object can not be cloned", which silently killed every offer and
+// candidate. A method as an own property reproduces that failure in Node.
+const nonCloneable = (extra) => ({ ...extra, toJSON() { return { ...extra }; } });
+
+assert.throws(() => structuredClone(nonCloneable({ type: "offer", sdp: "v=0" })),
+  "the raw shape really is non-cloneable, so this test means something");
+
+const sdpOut = plainSdp(nonCloneable({ type: "offer", sdp: "v=0" }));
+assert.deepEqual(sdpOut, { type: "offer", sdp: "v=0" });
+structuredClone(sdpOut); // must not throw
+
+// toJSON is used when present, which is what real RTCIceCandidate provides.
+assert.deepEqual(
+  plainCandidate({ candidate: "a", sdpMid: "0", toJSON() { return { candidate: "a", sdpMid: "0" }; } }),
+  { candidate: "a", sdpMid: "0" });
+
+// and a plain fallback when it is not
+const candOut = plainCandidate({ candidate: "b", sdpMid: "1", sdpMLineIndex: 2, usernameFragment: "u" });
+assert.deepEqual(candOut, { candidate: "b", sdpMid: "1", sdpMLineIndex: 2, usernameFragment: "u" });
+structuredClone(candOut);
+
 // --- Mesh peer bookkeeping ----------------------------------------------
-// Stub just enough of the WebRTC surface to drive syncPeers/drop.
+// Stub just enough of the WebRTC surface to drive syncPeers/drop. The
+// descriptions are deliberately non-cloneable, matching the browser.
 const closed = [];
 globalThis.RTCPeerConnection = class {
   constructor() { this.connectionState = "new"; this.remoteDescription = null; }
   addTrack() {}
   close() { closed.push(this); }
-  async createOffer() { return { type: "offer", sdp: "x" }; }
-  async setLocalDescription(d) { this.localDescription = d; }
+  async createOffer() { return nonCloneable({ type: "offer", sdp: "v=0" }); }
+  async setLocalDescription(d) { this.localDescription = nonCloneable({ type: d.type, sdp: d.sdp }); }
 };
 
 assert.ok(RTC_CONFIG.iceServers.some((s) => s.urls.some((u) => u.startsWith("stun:"))), "has STUN");
@@ -96,6 +121,11 @@ assert.deepEqual([...mesh.peers.keys()].sort(), ["a", "z"], "self excluded, peer
 await new Promise((r) => setTimeout(r, 0));
 assert.deepEqual(sent.map(([to, m]) => [to, m.type]), [["z", "offer"]],
   "offers only to peers we initiate to");
+
+// The regression that mattered: every outbound payload must be cloneable.
+for (const [, m] of sent) {
+  structuredClone(m);
+}
 
 // A peer leaving is closed exactly once and reported once.
 mesh.syncPeers(["m", "a"]);

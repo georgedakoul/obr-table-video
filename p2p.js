@@ -33,6 +33,25 @@ export const RTC_CONFIG = {
   ],
 };
 
+// RTCSessionDescription and RTCIceCandidate are platform objects, not plain
+// data. The Owlbear SDK ships a broadcast over postMessage, which uses the
+// structured clone algorithm, and that rejects them outright with "The object
+// can not be cloned" -- so every offer and candidate silently failed to send.
+// Everything that crosses the wire has to be reduced to plain values first.
+export function plainSdp(desc) {
+  return { type: desc.type, sdp: desc.sdp };
+}
+
+export function plainCandidate(candidate) {
+  if (typeof candidate.toJSON === "function") return candidate.toJSON();
+  return {
+    candidate: candidate.candidate,
+    sdpMid: candidate.sdpMid,
+    sdpMLineIndex: candidate.sdpMLineIndex,
+    usernameFragment: candidate.usernameFragment,
+  };
+}
+
 // Both sides must agree on who sends the offer, or they collide ("glare") and
 // both end up in have-local-offer. Comparing ids gives each pair one initiator
 // without any extra negotiation.
@@ -85,7 +104,7 @@ export class Mesh {
     }
 
     pc.onicecandidate = (e) => {
-      if (e.candidate) this.signal(peerId, { type: "ice", candidate: e.candidate });
+      if (e.candidate) this.signal(peerId, { type: "ice", candidate: plainCandidate(e.candidate) });
     };
     pc.ontrack = (e) => this.onTrack(peerId, e.streams[0]);
     pc.oniceconnectionstatechange = () => this.onState(peerId, pc.iceConnectionState);
@@ -119,7 +138,7 @@ export class Mesh {
       if (!isInitiator(this.selfId, peerId)) return; // the other side will offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      this.signal(peerId, { type: "offer", sdp: pc.localDescription });
+      this.signal(peerId, { type: "offer", sdp: plainSdp(pc.localDescription) });
     } catch (err) {
       this.onError(peerId, "offer: " + (err && err.message || err));
     }
@@ -144,7 +163,7 @@ export class Mesh {
       await this.flushIce(entry);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      this.signal(fromId, { type: "answer", sdp: pc.localDescription });
+      this.signal(fromId, { type: "answer", sdp: plainSdp(pc.localDescription) });
     } else if (msg.type === "answer") {
       await pc.setRemoteDescription(msg.sdp);
       await this.flushIce(entry);
