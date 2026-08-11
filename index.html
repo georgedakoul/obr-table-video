@@ -169,11 +169,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=19";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=19";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=19";
+import OBR from "./obr-sdk.js?v=20";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=20";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=20";
 
-const BUILD = "19";  // bump together with the ?v= on the imports above
+const BUILD = "20";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -391,8 +391,10 @@ try {
       // stored separately, so the button can never claim "Muted" while the mic
       // is live. The user's choice is remembered and reapplied on the next join.
       const TOGGLES = {
-        mic: { key: "tableVideoMicOn", pick: (s) => s.getAudioTracks(), on: "Mic", off: "Muted" },
-        cam: { key: "tableVideoCamOn", pick: (s) => s.getVideoTracks(), on: "Cam", off: "Cam off" },
+        mic: { key: "tableVideoMicOn", pick: (s) => s.getAudioTracks(), label: "Mic",
+               on: "Microphone on, click to mute", off: "Microphone muted, click to unmute" },
+        cam: { key: "tableVideoCamOn", pick: (s) => s.getVideoTracks(), label: "Cam",
+               on: "Camera on, click to turn off", off: "Camera off, click to turn on" },
       };
 
       const wantOn = (id) => recall(TOGGLES[id].key) !== "0";
@@ -402,8 +404,12 @@ try {
           const track = mesh && mesh.localStream && t.pick(mesh.localStream)[0];
           const live = track ? track.enabled : wantOn(id);
           $(id).disabled = !track;
+          // The label stays put; colour carries the state. Title and
+          // aria-pressed keep it available to anyone not reading the colour.
           $(id).classList.toggle("off", !live);
-          $(id).textContent = live ? t.on : t.off;
+          $(id).textContent = t.label;
+          $(id).title = live ? t.on : t.off;
+          $(id).setAttribute("aria-pressed", String(!live));
         }
       }
 
