@@ -75,6 +75,22 @@ Presence works through Owlbear player metadata: joining sets an in-call flag,
 everyone else sees it via `party.onChange` and dials you. Leaving, or the panel
 being torn down, clears it and releases the camera.
 
+### Taking a player aside (GM only)
+
+Hover or tap a player's tile and press the speaker button. That player stops
+hearing the other players, but still hears you, so you can run a private scene
+without anyone leaving the call. Press it again to let them back in.
+
+It is enforced by the other players' browsers, not by asking the excluded client
+to mute itself: each participant holds a separate peer connection per person, so
+everyone else calls `replaceTrack(null)` on the audio sender for that one
+connection. Audio to everyone else is unaffected and no renegotiation happens.
+The GM's client is exempt, which is what keeps the GM audible.
+
+The cut player is told, by a banner, rather than being left wondering why the
+table went quiet. It keys on connection id, so it clears if that player
+reconnects.
+
 ## Hosted modes: how everyone ends up in the same call
 
 Two mechanisms, in priority order.

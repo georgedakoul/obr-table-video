@@ -57,9 +57,13 @@
   .tile.waiting::after { content: attr(data-state); position: absolute; inset: 0;
             display: grid; place-items: center; font-size: 11px; opacity: .6; }
   /* GM-only per-player cutoff, revealed on hover or tap like the main bar. */
-  .tile .cut { position: absolute; top: 4px; right: 4px; padding: 2px 6px; font-size: 12px;
-               border-radius: 6px; border: 1px solid #ffffff33; background: #000000a6;
-               color: #fff; cursor: pointer; opacity: 0; transition: opacity .15s ease; }
+  .tile .cut { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+               width: 44px; height: 44px; padding: 0; border-radius: 50%;
+               display: grid; place-items: center; font-size: 19px; line-height: 1;
+               border: 1px solid #ffffff40; background: #000000a6; color: #fff;
+               cursor: pointer; opacity: 0; transition: opacity .15s ease;
+               backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  .tile .cut:hover { background: #000000d9; }
   .tile:hover .cut, body.touched .tile .cut { opacity: 1; }
   .tile.silenced .cut { opacity: 1; background: #8c2f2fe6; }
   .tile.silenced { outline: 2px solid #8c2f2f; outline-offset: -2px; }
@@ -111,7 +115,7 @@
   <button id="leave">Leave</button>
 </div>
 
-<div id="cutBanner">The GM has muted the table for you. You cannot hear the others.</div>
+<div id="cutBanner">You cannot hear the other players. The GM can still talk to you.</div>
 
 <div id="grid"></div>
 
@@ -181,11 +185,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=21";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=21";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=21";
+import OBR from "./obr-sdk.js?v=22";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=22";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=22";
 
-const BUILD = "21";  // bump together with the ?v= on the imports above
+const BUILD = "22";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -321,8 +325,8 @@ try {
         if (cut) {
           cut.textContent = off ? "🔇" : "🔊";
           cut.title = off
-            ? "This player cannot hear the table. Click to let them hear again."
-            : "Stop this player hearing the table";
+            ? "This player cannot hear the other players. Click to let them hear again."
+            : "Stop this player hearing the other players. They will still hear you.";
         }
       }
 
@@ -333,9 +337,11 @@ try {
       }
 
       // Applies whatever the GM has set, on every client. That is what makes it
-      // stick: each peer stops sending audio to the excluded player.
+      // stick: each player stops sending audio to the excluded player.
+      // The GM is deliberately exempt, so a player taken aside still hears the
+      // GM while the rest of the table is hidden from them.
       function applySilenced() {
-        if (mesh) mesh.setSilenced(silenced);
+        if (mesh) mesh.setSilenced(isGM ? [] : silenced);
         document.body.classList.toggle("silenced-me", silenced.has(myId));
         for (const el of $("grid").querySelectorAll(".tile")) {
           paintSilence(el, el.id.slice("tile-".length));
