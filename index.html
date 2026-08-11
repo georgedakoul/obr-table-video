@@ -23,11 +23,16 @@
   body.in-call #bar button { background: #2c2c2ccc; border-color: #ffffff33;
          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   body.in-call #bar button:hover { background: #3d3d3de6; }
+  /* Must out-specify "body.in-call #bar button" above, which otherwise wins
+     over "#bar button.off" and swallowed the muted colour during a call. */
+  body.in-call #bar button.off,
+  #bar button.off { background: #8c2f2fe6; border-color: #ff8a8a66; color: #fff; }
+  body.in-call #bar button.off:hover,
+  #bar button.off:hover { background: #a53a3af2; }
   body.in-call #barLabel { text-shadow: 0 1px 2px #000; }
   #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
               white-space: nowrap; text-overflow: ellipsis; }
   #bar button { padding: 4px 8px; font-size: 12px; }
-  #bar button.off { background: #6b2b2b; border-color: #6b2b2b; }
   #mic, #cam, #leave, #popout2 { display: none; }
   body.in-call #leave { display: inline-block; }
   body.in-call.mode-p2p #mic, body.in-call.mode-p2p #cam { display: inline-block; }
@@ -164,11 +169,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=18";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=18";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=18";
+import OBR from "./obr-sdk.js?v=19";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=19";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=19";
 
-const BUILD = "18";  // bump together with the ?v= on the imports above
+const BUILD = "19";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
