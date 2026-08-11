@@ -85,7 +85,7 @@
   #join:disabled { background: #444; color: #999; border-color: #444; cursor: default; }
   p { margin: 0; font-size: 12px; opacity: .6; }
   .err { color: #ff9b9b; }
-  #hostRow, #fallback, #gmRow { display: none; }
+  #fallback, #gmRow { display: none; }
   hr { border: 0; border-top: 1px solid #3a3a3a; margin: 4px 0; }
   .row { display: flex; gap: 6px; }
   .row button { flex: 0 0 auto; }
@@ -132,17 +132,6 @@
 
   <p id="build"></p>
 
-  <label for="mode">Video mode</label>
-  <select id="mode">
-    <option value="p2p">Built in, peer to peer</option>
-    <option value="jitsi">Jitsi (hosted)</option>
-  </select>
-
-  <div id="hostRow">
-    <label for="server">Jitsi server</label>
-    <input id="server" spellcheck="false" autocapitalize="off">
-  </div>
-
   <div id="gmRow">
     <hr>
     <label for="shared">Shared call link (GM only)</label>
@@ -187,11 +176,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=24";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=24";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=24";
+import OBR from "./obr-sdk.js?v=25";
+import { sanitizeLink } from "./callurl.js?v=25";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=25";
 
-const BUILD = "24";  // bump together with the ?v= on the imports above
+const BUILD = "25";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -215,8 +204,6 @@ try {
       const isGM = (await OBR.player.getRole()) === "GM";
       const callRoom = "obr-table-" + OBR.room.id;
 
-      $("mode").value = recall("tableVideoMode") || "p2p";
-      $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
       $("gmRow").style.display = isGM ? "block" : "none";
       document.body.classList.toggle("is-gm", isGM);
 
@@ -228,31 +215,20 @@ try {
       let signalErr = "";     // most recent signalling failure
       let silenced = new Set(); // connection ids the GM has cut off
 
-      // ---------- hosted (iframe) mode ----------
-      function hostedUrl() {
-        if (sharedLink) return sharedLink;
-        if ($("mode").value !== "jitsi") return null;
-        const host = $("server").value;
-        const url = callUrl("jitsi", host, callRoom, myName);
-        if (url) remember("tableVideoJitsiHost", host.trim());
-        return url;
-      }
-
-      const usingP2P = () => !sharedLink && $("mode").value === "p2p";
+      // A GM-set shared link replaces the built-in call with an iframe of
+      // whatever service they chose. With no link, it is peer to peer.
+      const hostedUrl = () => sharedLink;
+      const usingP2P = () => !sharedLink;
 
       function render() {
-        remember("tableVideoMode", $("mode").value);
-        $("hostRow").style.display = (!sharedLink && $("mode").value === "jitsi") ? "block" : "none";
-
         // A failed join has to survive the render() that runs right after it,
         // otherwise the reason is wiped and the button just looks dead.
         $("status").className = lastError ? "err" : "";
         $("status").textContent = lastError ? lastError : sharedLink
           ? "Joining the GM's call at " + new URL(sharedLink).host + "."
-          : usingP2P()
-            ? "Direct connection between players, no server. Best up to about 6 people."
-            : "Everyone in this Owlbear room joins the same Jitsi call.";
-        $("join").disabled = !sharedLink && !usingP2P() && !hostedUrl();
+          : "Direct connection between players, no server. Best up to about 6 people.";
+        // There is always something to join now: a shared link, or peer to peer.
+        $("join").disabled = false;
         $("build").textContent = "build " + BUILD;
         $("popout").style.display = usingP2P() ? "none" : "block";
         document.body.classList.toggle("mode-p2p", usingP2P());
@@ -269,8 +245,6 @@ try {
       readMeta(await OBR.room.getMetadata());
       OBR.room.onMetadataChange(readMeta);
 
-      $("mode").onchange = () => { lastError = null; render(); };
-      $("server").oninput = render;
 
       $("saveShared").onclick = async () => {
         const clean = sanitizeLink($("shared").value);

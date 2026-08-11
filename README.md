@@ -10,9 +10,9 @@ iframe will ever load it, and Discord's API exposes no voice or video streams to
 third parties. The reverse trick (running Owlbear inside a Discord Activity) is
 blocked too — `owlbear.rodeo` serves `X-Frame-Options: SAMEORIGIN`.
 
-So this extension brings its own video instead: a built-in peer-to-peer mode by
-default, with hosted Jitsi or any pasted call link as fallbacks. Keep Discord
-open for text if you like; the faces live in Owlbear.
+So this extension brings its own video instead: peer to peer between the
+players' browsers, with a GM-pasted call link as the fallback. Keep Discord open
+for text if you like; the faces live in Owlbear.
 
 ## Install
 
@@ -62,7 +62,7 @@ Two real limits, both inherent to serverless P2P:
 
 - **Group size.** It is a full mesh: every participant sends their video once
   per other participant. Comfortable to about 6 people. Past that you want an
-  SFU, which is what the hosted providers are for.
+  SFU.
 - **Strict networks.** STUN alone cannot connect two peers that are both behind
   symmetric NAT, which is the normal case for a phone on mobile data calling a
   desktop behind a home router. A TURN relay is the only fix, so this falls back
@@ -91,51 +91,14 @@ The cut player is told, by a banner, rather than being left wondering why the
 table went quiet. It keys on connection id, so it clears if that player
 reconnects.
 
-## Hosted modes: how everyone ends up in the same call
+## If someone cannot connect
 
-Two mechanisms, in priority order.
-
-**1. Shared call link (GM only).** The GM pastes any `https://` call link into
-the *Shared call link* box and clicks **Set for room**. It is stored in Owlbear
-room metadata, so every client in the room picks it up immediately and joins
-that exact call. Works with anything: Element Call, Zoom, Meet, Discord's own
-invite (in a browser tab), a self-hosted Jitsi. **Clear** removes it.
-
-**2. Automatic, by room name.** With no shared link set, the call room is
-derived from the Owlbear room id, so everyone computes the identical URL with
-nothing to pass around.
-
-Automatic mode only works with a service that resolves a room *from its name*.
-Jitsi does. **Element Call does not** — visiting `call.element.io/<name>` starts
-a brand new call rather than joining an existing one, so the GM and each player
-would each create their own separate call. That is why Element Call is not in
-the dropdown: use it through the shared call link instead.
-
-### Using Element Call
-
-1. GM opens <https://call.element.io> in a normal tab and starts a call.
-2. Copy the URL from the address bar.
-3. Paste it into **Shared call link** → **Set for room**.
-
-### The Jitsi time limit
-
-`meet.jit.si` **deliberately disconnects embedded calls after 5 minutes**. It
-prints "embedding meet.jit.si is intended only for demonstration purposes" and
-drops the call. That is 8x8's policy for their free demo server, not something
-this extension can change. Options:
-
-| Option | Cost | Needs a backend |
-|---|---|---|
-| Use the **Pop out** button with `meet.jit.si` | free | no |
-| **JaaS** free tier (25 monthly active users, unlimited minutes) | free | yes — a JWT signer |
-| Self-host Jitsi on a VPS | ~5/mo | no, but you run the server |
-
-The pop-out trick works because the 5-minute cut applies only to *embedded*
-mode. A call in its own browser window is not embedded, so it runs untouched.
-
-Community-run Jitsi instances mostly refuse embedding now — `meet.ffmuc.net`,
-for example, restricts `frame-ancestors` to an allowlist. Pointing this
-extension at someone's donated server is also poor manners.
+Peer to peer fails when both ends are behind symmetric NAT, and the free public
+TURN relay it falls back to is capped and shared. For those cases the GM can
+paste any `https://` call link (Element Call, Meet, Zoom, a self-hosted Jitsi)
+into **Shared call link** and press **Set for room**. It is stored in Owlbear
+room metadata, so every client picks it up immediately and joins that exact
+call instead of the built-in one. **Clear** returns everyone to peer to peer.
 
 ## Local development
 
