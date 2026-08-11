@@ -6,12 +6,7 @@ export const PROVIDERS = {
   // room lands in the same call with nothing to share. Element Call does not:
   // visiting /<name> starts a *new* call, so each person would create their
   // own. Anything that cannot join by name has to go through a shared link.
-  jitsi: {
-    label: "Jitsi (joins automatically)",
-    host: "meet.jit.si",
-    editableHost: true,
-    joinsByName: true,
-  },
+  jitsi: { host: "meet.jit.si" },
 };
 
 // A link the GM pastes is loaded into an iframe, so it is a trust boundary:

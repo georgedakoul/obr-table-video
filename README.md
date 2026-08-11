@@ -10,9 +10,9 @@ iframe will ever load it, and Discord's API exposes no voice or video streams to
 third parties. The reverse trick (running Owlbear inside a Discord Activity) is
 blocked too — `owlbear.rodeo` serves `X-Frame-Options: SAMEORIGIN`.
 
-This extension uses Jitsi Meet instead, which is embeddable, free, and needs no
-backend of your own. Keep Discord open for text if you like; the faces live in
-Owlbear.
+So this extension brings its own video instead: a built-in peer-to-peer mode by
+default, with hosted Jitsi or any pasted call link as fallbacks. Keep Discord
+open for text if you like; the faces live in Owlbear.
 
 ## Install
 
@@ -43,7 +43,29 @@ edit those three lines to point at its own host. They are absolute rather than
 relative because GitHub Pages serves projects from a subpath, where a leading
 `/` resolves to the wrong place.
 
-## How everyone ends up in the same call
+## Built-in peer-to-peer mode (default)
+
+The **Built in, peer to peer** mode needs no video service at all. Each browser
+connects directly to each other browser with WebRTC, and the connection
+handshake travels over Owlbear's own broadcast channel, so there is no server
+to run, no account, no time limit, and no branding. The UI is plain HTML in
+`index.html`, so it is yours to restyle.
+
+Two real limits, both inherent to serverless P2P:
+
+- **Group size.** It is a full mesh: every participant sends their video once
+  per other participant. Comfortable to about 6 people. Past that you want an
+  SFU, which is what the hosted providers are for.
+- **Strict networks.** There is only public STUN, no TURN relay. Most home
+  connections are fine, but symmetric NAT and some corporate or mobile networks
+  will fail to connect. A TURN server is the only fix and someone has to pay for
+  it, so the hosted modes remain the fallback.
+
+Presence works through Owlbear player metadata: joining sets an in-call flag,
+everyone else sees it via `party.onChange` and dials you. Leaving, or the panel
+being torn down, clears it and releases the camera.
+
+## Hosted modes: how everyone ends up in the same call
 
 Two mechanisms, in priority order.
 
