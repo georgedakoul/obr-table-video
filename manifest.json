@@ -1,0 +1,21 @@
+{
+  "name": "Table Video",
+  "version": "1.0.0",
+  "manifest_version": 1,
+  "description": "Webcam video chat for everyone in your Owlbear Rodeo room.",
+  "author": "George",
+  "icon": "/icon.svg",
+  "action": {
+    "title": "Table Video",
+    "icon": "/icon.svg",
+    "popover": "/index.html",
+    "width": 420,
+    "height": 540
+  },
+  "permissions": [
+    { "name": "camera", "reason": "Show your webcam to the rest of the table" },
+    { "name": "microphone", "reason": "Talk to the rest of the table" },
+    { "name": "autoplay", "reason": "Play the other players' audio and video" },
+    { "name": "display-capture", "reason": "Share your screen with the table" }
+  ]
+}

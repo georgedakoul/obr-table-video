@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Table Video</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1e1e1e; color: #eee;
+                font: 14px/1.4 system-ui, sans-serif; }
+  #call { width: 100%; height: 100%; border: 0; display: none; }
+  #setup { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  label { font-size: 12px; opacity: .65; }
+  input, button { padding: 8px 10px; font: inherit; border-radius: 6px;
+                  border: 1px solid #4a4a4a; background: #2c2c2c; color: #eee; }
+  button { cursor: pointer; }
+  button:hover { background: #383838; }
+  #join { background: #bb99ff; color: #1e1e1e; border-color: #bb99ff; font-weight: 600; }
+  #join:hover { background: #cdb3ff; }
+  p { margin: 0; font-size: 12px; opacity: .6; }
+  #fallback { display: none; }
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <label for="server">Video server</label>
+  <input id="server" value="meet.jit.si" spellcheck="false" autocapitalize="off">
+  <button id="join">Join video</button>
+  <button id="popout">Open in separate window</button>
+  <p id="note">Loading&hellip;</p>
+  <input id="fallback" readonly>
+</div>
+
+<iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
+
+<script type="module">
+import OBR from "https://esm.sh/@owlbear-rodeo/sdk@3.1.0";
+import { callUrl } from "./callurl.js";
+
+// ponytail: localStorage throws in cross-site iframes on Safari, so it is
+// optional convenience only, never load-bearing.
+const remember = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const recall = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+
+const $ = (id) => document.getElementById(id);
+
+OBR.onReady(async () => {
+  const name = await OBR.player.getName();
+  // Same Owlbear room => same call. Anyone with the Owlbear room link can join
+  // the video too, which matches how Owlbear itself shares rooms.
+  const callRoom = "obr-table-" + OBR.room.id;
+
+  $("server").value = recall("tableVideoServer") || "meet.jit.si";
+  $("note").textContent = "Everyone in this Owlbear room joins the same call.";
+
+  function currentUrl() {
+    const url = callUrl($("server").value, callRoom, name);
+    if (url) remember("tableVideoServer", $("server").value.trim());
+    return url;
+  }
+
+  $("join").onclick = () => {
+    const url = currentUrl();
+    if (!url) return;
+    $("setup").style.display = "none";
+    $("call").src = url;
+    $("call").style.display = "block";
+  };
+
+  $("popout").onclick = () => {
+    const url = currentUrl();
+    if (!url) return;
+    if (!window.open(url, "_blank", "width=960,height=680")) {
+      // Popup blocked by the iframe sandbox: hand over the link instead.
+      $("note").textContent = "Popup blocked. Copy this link into a new tab:";
+      $("fallback").value = url;
+      $("fallback").style.display = "block";
+      $("fallback").select();
+    }
+  };
+});
+</script>
+
+</body>
+</html>
