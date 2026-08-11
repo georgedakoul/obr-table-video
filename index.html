@@ -11,6 +11,19 @@
 
   #bar { display: flex; flex: 0 0 auto; gap: 6px; padding: 6px;
          background: #262626; border-bottom: 1px solid #3a3a3a; align-items: center; }
+
+  /* In a call the controls float over the video and stay out of the way until
+     pointed at. Touch has no hover, so tapping the video sets .touched. */
+  body.in-call #bar { position: absolute; top: 0; left: 0; right: 0; z-index: 5;
+         border-bottom: 0; background: linear-gradient(#000000b0, #00000000);
+         opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+  body.in-call:hover #bar,
+  body.in-call.touched #bar,
+  body.in-call #bar:focus-within { opacity: 1; pointer-events: auto; }
+  body.in-call #bar button { background: #2c2c2ccc; border-color: #ffffff33;
+         backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  body.in-call #bar button:hover { background: #3d3d3de6; }
+  body.in-call #barLabel { text-shadow: 0 1px 2px #000; }
   #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
               white-space: nowrap; text-overflow: ellipsis; }
   #bar button { padding: 4px 8px; font-size: 12px; }
@@ -23,11 +36,11 @@
   #call { flex: 1 1 auto; width: 100%; border: 0; display: none; }
 
   /* Peer-to-peer video grid */
-  #grid { display: none; flex: 1 1 auto; overflow-y: auto; padding: 4px;
-          gap: 4px; grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
-          align-content: start; }
-  .tile { position: relative; background: #000; border-radius: 6px; overflow: hidden;
-          aspect-ratio: 4 / 3; min-width: 0; }
+  #grid { display: none; flex: 1 1 auto; overflow: hidden; padding: 0; gap: 2px;
+          grid-template-columns: repeat(auto-fit, minmax(min(96px, 100%), 1fr));
+          grid-auto-rows: 1fr; }
+  .tile { position: relative; background: #000; overflow: hidden;
+          min-width: 0; min-height: 0; }
   .tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
   .tile b { position: absolute; left: 0; bottom: 0; right: 0; padding: 1px 4px;
             font: 500 10px system-ui; background: linear-gradient(transparent, #000c);
@@ -147,11 +160,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=15";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=15";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=15";
+import OBR from "./obr-sdk.js?v=16";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=16";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=16";
 
-const BUILD = "15";  // bump together with the ?v= on the imports above
+const BUILD = "16";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -527,6 +540,18 @@ try {
       };
       $("grip").addEventListener("pointerup", endDrag);
       $("grip").addEventListener("pointercancel", endDrag);
+
+      // Touch devices have no hover, so a tap anywhere over the video reveals
+      // the controls and they fade out again shortly after.
+      let touchTimer = null;
+      const revealControls = () => {
+        document.body.classList.add("touched");
+        clearTimeout(touchTimer);
+        touchTimer = setTimeout(() => document.body.classList.remove("touched"), 3500);
+      };
+      for (const el of [$("grid"), $("bar")]) {
+        el.addEventListener("pointerdown", revealControls);
+      }
 
       renderLock();
       applySize();
