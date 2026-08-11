@@ -68,6 +68,8 @@
   .tile:hover .cut, body.touched .tile .cut { opacity: 1; }
   .tile.silenced .cut { opacity: 1; background: #8c2f2fe6; }
   .tile.silenced { outline: 2px solid #8c2f2f; outline-offset: -2px; }
+  /* Relayed peers cost someone bandwidth, so mark them faintly. */
+  .tile.relayed b::after { content: " \21BB"; opacity: .8; }
   #cutBanner { display: none; flex: 0 0 auto; padding: 6px 8px; background: #8c2f2f;
                color: #fff; font-size: 12px; text-align: center; }
   body.silenced-me #cutBanner { display: block; }
@@ -176,11 +178,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=26";
-import { sanitizeLink } from "./callurl.js?v=26";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=26";
+import OBR from "./obr-sdk.js?v=28";
+import { sanitizeLink } from "./callurl.js?v=28";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=28";
 
-const BUILD = "26";  // bump together with the ?v= on the imports above
+const BUILD = "28";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -214,6 +216,7 @@ try {
       let lastError = null;   // sticky, so a failed join stays readable
       let signalErr = "";     // most recent signalling failure
       let silenced = new Set(); // connection ids the GM has cut off
+      let linkTimer = null;   // refreshes the per-tile connection tooltips
 
       // A GM-set shared link replaces the built-in call with an iframe of
       // whatever service they chose. With no link, it is peer to peer.
@@ -312,6 +315,8 @@ try {
         const kind = info.relayed ? "relay" : info.local;
         el.title = (names.get(peerId) || "Player") + " \u2014 " +
           (LINK_TEXT[kind] || "connected");
+        // A relay is the one case worth seeing without hovering.
+        el.classList.toggle("relayed", !!info.relayed);
       }
 
       function paintSilence(el, id) {
@@ -414,7 +419,18 @@ try {
 
         updateBar();
         refreshToggles();
-        applySilenced();   // a fresh mesh must adopt whatever the GM already set
+        // Room metadata is persistent, so a cutoff set last session would still
+        // be there today and leave someone silently muted. The GM starting a
+        // call resets it.
+        if (isGM) await OBR.room.setMetadata({ [META_SILENCED]: undefined }).catch(() => {});
+        applySilenced();
+        // The candidate pair is usually not marked succeeded yet at the moment
+        // a peer reports "connected", so asking once there returns nothing.
+        // Re-ask periodically; it also keeps up if ICE later switches path.
+        clearInterval(linkTimer);
+        linkTimer = setInterval(() => {
+          for (const id of mesh.peers.keys()) describeLink(id);
+        }, 5000);
         showView("p2p");
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {
@@ -434,6 +450,17 @@ try {
             if (id !== myId) tile(id, names.get(id) || "Player");
           }
           if (mesh) { mesh.syncPeers(inCall); updateBar(); }
+
+          // Connection ids change when someone reconnects, so a cutoff can be
+          // left pointing at a client that no longer exists. Only the GM
+          // prunes, and only when something actually needs removing.
+          if (isGM && silenced.size) {
+            const live = new Set(inCall);
+            const kept = [...silenced].filter((id) => live.has(id));
+            if (kept.length !== silenced.size) {
+              OBR.room.setMetadata({ [META_SILENCED]: kept }).catch(() => {});
+            }
+          }
         };
         unsubParty = OBR.party.onChange(syncParty);
         syncParty(await OBR.party.getPlayers());
@@ -445,6 +472,8 @@ try {
       async function leaveP2P() {
         if (unsubSignal) { unsubSignal(); unsubSignal = null; }
         if (unsubParty) { unsubParty(); unsubParty = null; }
+        clearInterval(linkTimer);
+        linkTimer = null;
         if (mesh) { mesh.close(); mesh = null; }
         $("grid").innerHTML = "";
         refreshToggles();
