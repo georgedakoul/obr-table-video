@@ -9,12 +9,27 @@
 
 export const SIGNAL_CHANNEL = "com.github.georgedakoul.obr-table-video/signal";
 
-// Public STUN only. Without a TURN server, peers behind symmetric NAT or strict
-// corporate firewalls will fail to connect; there is no way around that without
-// relaying traffic through a server someone pays for.
+// STUN alone fails whenever both ends are behind symmetric NAT, which is the
+// normal case for a phone on mobile data talking to a machine behind a home
+// router. A TURN relay is the only fix, so this falls back to the free public
+// Open Relay one. Media stays DTLS-SRTP encrypted end to end, so the relay
+// forwards bytes it cannot read, but it is a shared free service: swap in your
+// own TURN credentials if you want it to be dependable.
+//
+// The 443/TCP entry matters most, it is what gets through networks that block
+// UDP entirely.
 export const RTC_CONFIG = {
   iceServers: [
     { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+    {
+      urls: [
+        "turn:staticauth.openrelay.metered.ca:80",
+        "turn:staticauth.openrelay.metered.ca:80?transport=tcp",
+        "turns:staticauth.openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
   ],
 };
 
@@ -27,13 +42,18 @@ export function isInitiator(selfId, peerId) {
 
 export class Mesh {
   // send(toId, message) goes out over the Owlbear broadcast channel.
-  constructor({ selfId, send, onTrack, onPeerEnd, localStream = null }) {
+  // onState(peerId, state) reports connection progress for the UI.
+  constructor({ selfId, send, onTrack, onPeerEnd, onState = () => {}, localStream = null }) {
     this.selfId = selfId;
     this.send = send;
     this.onTrack = onTrack;
     this.onPeerEnd = onPeerEnd;
+    this.onState = onState;
     this.localStream = localStream;
     this.peers = new Map(); // peerId -> { pc, pendingIce[] }
+    // Counters so the UI can tell "no signalling arrived" apart from
+    // "signalling arrived but ICE could not find a path".
+    this.stats = { sent: 0, received: 0 };
   }
 
   /** Reconcile open connections against the set of peers currently in the call. */
@@ -64,14 +84,24 @@ export class Mesh {
     }
 
     pc.onicecandidate = (e) => {
-      if (e.candidate) this.send(peerId, { type: "ice", candidate: e.candidate });
+      if (e.candidate) this.signal(peerId, { type: "ice", candidate: e.candidate });
     };
     pc.ontrack = (e) => this.onTrack(peerId, e.streams[0]);
+    pc.oniceconnectionstatechange = () => this.onState(peerId, pc.iceConnectionState);
     pc.onconnectionstatechange = () => {
+      this.onState(peerId, pc.connectionState);
+      // "disconnected" often recovers on its own, so only tear down on a
+      // terminal state.
       if (["failed", "closed"].includes(pc.connectionState)) this.drop(peerId);
     };
 
     return entry;
+  }
+
+  // Every outbound message goes through here so the counter stays honest.
+  signal(peerId, msg) {
+    this.stats.sent++;
+    this.send(peerId, msg);
   }
 
   async connect(peerId) {
@@ -79,11 +109,12 @@ export class Mesh {
     if (!isInitiator(this.selfId, peerId)) return; // the other side will offer
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    this.send(peerId, { type: "offer", sdp: pc.localDescription });
+    this.signal(peerId, { type: "offer", sdp: pc.localDescription });
   }
 
   async handleSignal(fromId, msg) {
     if (!msg || typeof msg !== "object") return;
+    this.stats.received++;
     const entry = this.peer(fromId);
     const { pc } = entry;
 
@@ -92,7 +123,7 @@ export class Mesh {
       await this.flushIce(entry);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      this.send(fromId, { type: "answer", sdp: pc.localDescription });
+      this.signal(fromId, { type: "answer", sdp: pc.localDescription });
     } else if (msg.type === "answer") {
       await pc.setRemoteDescription(msg.sdp);
       await this.flushIce(entry);

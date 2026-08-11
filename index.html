@@ -28,8 +28,8 @@
   .tile b { position: absolute; left: 0; bottom: 0; right: 0; padding: 2px 6px;
             font: 500 11px system-ui; background: linear-gradient(transparent, #000c);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tile.waiting::after { content: "connecting…"; position: absolute; inset: 0;
-            display: grid; place-items: center; font-size: 11px; opacity: .5; }
+  .tile.waiting::after { content: attr(data-state); position: absolute; inset: 0;
+            display: grid; place-items: center; font-size: 11px; opacity: .6; }
 
   #setup { flex: 1 1 auto; padding: 16px; display: none; flex-direction: column; gap: 10px;
            overflow-y: auto; }
@@ -237,11 +237,24 @@ try {
           el = document.createElement("div");
           el.className = "tile waiting";
           el.id = "tile-" + id;
+          el.dataset.state = "waiting";
           el.innerHTML = '<video autoplay playsinline></video><b></b>';
           $("grid").appendChild(el);
         }
         el.querySelector("b").textContent = label;
         return el;
+      }
+
+      // Distinguishes "no signalling arrived" (recv 0 -> broadcast is the
+      // problem) from "signalling fine but ICE cannot connect" (recv > 0 with
+      // peers stuck in checking/failed -> needs TURN).
+      function updateDiag() {
+        if (!mesh) return;
+        const states = [...mesh.peers.entries()]
+          .map(([id, e]) => (names.get(id) || id.slice(0, 4)) + ":" + e.pc.iceConnectionState);
+        $("barLabel").textContent =
+          `P2P sent ${mesh.stats.sent} recv ${mesh.stats.received}` +
+          (states.length ? " | " + states.join(" ") : " | alone");
       }
 
       const sendSignal = (toId, msg) =>
@@ -277,6 +290,11 @@ try {
             if (v.srcObject !== remoteStream) v.srcObject = remoteStream;
           },
           onPeerEnd: (peerId) => document.getElementById("tile-" + peerId)?.remove(),
+          onState: (peerId, state) => {
+            const el = document.getElementById("tile-" + peerId);
+            if (el) el.dataset.state = state;
+            updateDiag();
+          },
           localStream: stream,
         });
 
@@ -287,7 +305,7 @@ try {
         mv.srcObject = stream;
         mv.muted = true;
 
-        $("barLabel").textContent = "Peer to peer";
+        updateDiag();
         showView("p2p");
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {
@@ -305,7 +323,7 @@ try {
           for (const id of inCall) {
             if (id !== myId) tile(id, names.get(id) || "Player");
           }
-          if (mesh) mesh.syncPeers(inCall);
+          if (mesh) { mesh.syncPeers(inCall); updateDiag(); }
         };
         unsubParty = OBR.party.onChange(syncParty);
         syncParty(await OBR.party.getPlayers());

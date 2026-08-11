@@ -71,7 +71,14 @@ globalThis.RTCPeerConnection = class {
   async setLocalDescription(d) { this.localDescription = d; }
 };
 
-assert.ok(RTC_CONFIG.iceServers[0].urls.some((u) => u.startsWith("stun:")), "has STUN");
+assert.ok(RTC_CONFIG.iceServers.some((s) => s.urls.some((u) => u.startsWith("stun:"))), "has STUN");
+// Without a TURN relay a phone on mobile data cannot reach a machine behind a
+// home router, so the relay entries must survive any future edit of the config.
+const turn = RTC_CONFIG.iceServers.find((s) => s.urls.some((u) => u.startsWith("turn")));
+assert.ok(turn, "has TURN");
+assert.ok(turn.username && turn.credential, "TURN carries credentials");
+assert.ok(turn.urls.some((u) => u.includes("443") && u.includes("transport=tcp")),
+  "has a 443/TCP TURN url for UDP-blocked networks");
 
 const sent = [];
 const ended = [];
