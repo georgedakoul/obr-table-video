@@ -105,6 +105,17 @@ Run the tests with:
 node test.mjs
 ```
 
+### Rebuilding the vendored SDK
+
+`obr-sdk.js` is the Owlbear Rodeo SDK bundled into a single file and committed,
+so the page makes no cross-origin requests at startup. To update it:
+
+```
+npm install @owlbear-rodeo/sdk@latest
+echo 'export { default } from "@owlbear-rodeo/sdk";' > entry.js
+npx esbuild entry.js --bundle --format=esm --minify --outfile=obr-sdk.js
+```
+
 ## Notes
 
 - Anyone who has your Owlbear room link can also join the video call. That is
