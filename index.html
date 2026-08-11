@@ -162,6 +162,7 @@ try {
       let joinedUrl = null;   // hosted mode
       let mesh = null;        // p2p mode
       let names = new Map();  // connectionId -> display name
+      let lastError = null;   // sticky, so a failed join stays readable
 
       // ---------- hosted (iframe) mode ----------
       function hostedUrl() {
@@ -179,8 +180,10 @@ try {
         remember("tableVideoMode", $("mode").value);
         $("hostRow").style.display = (!sharedLink && $("mode").value === "jitsi") ? "block" : "none";
 
-        $("status").className = "";
-        $("status").textContent = sharedLink
+        // A failed join has to survive the render() that runs right after it,
+        // otherwise the reason is wiped and the button just looks dead.
+        $("status").className = lastError ? "err" : "";
+        $("status").textContent = lastError ? lastError : sharedLink
           ? "Joining the GM's call at " + new URL(sharedLink).host + "."
           : usingP2P()
             ? "Direct connection between players, no server. Best up to about 6 people."
@@ -200,7 +203,7 @@ try {
       readMeta(await OBR.room.getMetadata());
       OBR.room.onMetadataChange(readMeta);
 
-      $("mode").onchange = render;
+      $("mode").onchange = () => { lastError = null; render(); };
       $("server").oninput = render;
 
       $("saveShared").onclick = async () => {
@@ -252,9 +255,15 @@ try {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         } catch (err) {
-          $("status").className = "err";
-          $("status").textContent = "Could not use your camera or microphone: " + err.name +
-            ". Check the browser's site permissions for owlbear.rodeo.";
+          // NotReadableError almost always means another program or another
+          // browser already holds the camera, which is easy to hit when testing
+          // with two browsers on one machine.
+          const hint = {
+            NotReadableError: "Another browser or app is already using the camera. Close it, or test with a second device.",
+            NotAllowedError: "Permission was refused. Allow camera and microphone for owlbear.rodeo in the site settings.",
+            NotFoundError: "No camera or microphone was found on this machine.",
+          }[err.name] || "Check the browser's site permissions for owlbear.rodeo.";
+          lastError = "Could not start your camera (" + err.name + "). " + hint;
           return;
         }
 
@@ -335,6 +344,7 @@ try {
       $("join").onclick = async () => {
         if (joining || mesh) return;
         joining = true;
+        lastError = null;
         $("join").disabled = true;
         try {
           if (usingP2P()) {
