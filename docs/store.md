@@ -26,6 +26,8 @@ machine belonging to this project.
 Each tile shows how that player is connected, `· direct` or `· relay`, so you
 can always see what the call is actually doing.
 
+![The video panel beside an Owlbear map](https://raw.githubusercontent.com/georgedakoul/obr-table-video/main/docs/screenshot-desktop.jpg)
+
 ## Using it
 
 - The GM enables the extension for the room. Players install nothing, they just
@@ -45,6 +47,11 @@ in, or use **⇄** to swap the whole set at once when you are running two groups
 
 This is enforced by the other players' browsers rather than trusting the muted
 client, and it resets whenever the GM starts a call.
+
+On a phone the panel sits under the map and the controls appear when you tap
+the video.
+
+![The call running on a phone](https://raw.githubusercontent.com/georgedakoul/obr-table-video/main/docs/screenshot-mobile.jpg)
 
 ## Good to know
 
