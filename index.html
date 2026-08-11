@@ -57,6 +57,17 @@
           user-select: text; -webkit-user-select: text; }
   #copyDiag { margin-top: 4px; padding: 3px 8px; font-size: 11px; }
 
+  /* Always reachable, including before joining a call. */
+  #lock { position: fixed; top: 4px; right: 4px; z-index: 11; padding: 2px 6px;
+          font-size: 13px; line-height: 1.2; background: #2c2c2ccc; }
+
+  /* Resize grip, only present while the panel is unlocked. */
+  #grip { display: none; position: fixed; right: 0; bottom: 0; width: 18px; height: 18px;
+          cursor: nwse-resize; z-index: 10; touch-action: none;
+          color: #8a8a8a; font-size: 13px; line-height: 18px; text-align: right; }
+  #grip::after { content: "\25E2"; }
+  body.unlocked #grip { display: block; }
+
   #boot { flex: 1 1 auto; padding: 16px; font-size: 13px; }
   #boot code { display: block; margin-top: 8px; padding: 8px; background: #000;
                border-radius: 6px; font-size: 11px; white-space: pre-wrap;
@@ -115,6 +126,9 @@
   </div>
 </div>
 
+<button id="lock" title="Unlock to resize the panel">🔓</button>
+<div id="grip" title="Drag to resize"></div>
+
 <iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
 
 <script>
@@ -143,11 +157,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=13";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=13";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=13";
+import OBR from "./obr-sdk.js?v=14";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=14";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=14";
 
-const BUILD = "13";  // bump together with the ?v= on the imports above
+const BUILD = "14";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -300,6 +314,8 @@ try {
           return;
         }
 
+        applyTogglePrefs(stream);
+
         mesh = new Mesh({
           selfId: myId,
           send: sendSignal,
@@ -327,6 +343,7 @@ try {
         mv.muted = true;
 
         updateDiag();
+        refreshToggles();
         showView("p2p");
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {
@@ -375,23 +392,49 @@ try {
         if (mesh) { mesh.close(); mesh = null; }
         $("grid").innerHTML = "";
         $("diag").style.display = "none";
+        refreshToggles();
         // Never let a failed metadata write throw out of leave: the camera is
         // already released and the UI must still return to the setup view.
         await OBR.player.setMetadata({ [META_IN_CALL]: undefined }).catch(() => {});
       }
 
-      // Toggling track.enabled needs no renegotiation, unlike removing a track.
-      const wireToggle = (id, pick, onLabel, offLabel) => {
-        $(id).onclick = () => {
-          const t = mesh && mesh.localStream && pick(mesh.localStream)[0];
-          if (!t) return;
-          t.enabled = !t.enabled;
-          $(id).classList.toggle("off", !t.enabled);
-          $(id).textContent = t.enabled ? onLabel : offLabel;
-        };
+      // Mic and camera. The label is always derived from the actual track, never
+      // stored separately, so the button can never claim "Muted" while the mic
+      // is live. The user's choice is remembered and reapplied on the next join.
+      const TOGGLES = {
+        mic: { key: "tableVideoMicOn", pick: (s) => s.getAudioTracks(), on: "Mic", off: "Muted" },
+        cam: { key: "tableVideoCamOn", pick: (s) => s.getVideoTracks(), on: "Cam", off: "Cam off" },
       };
-      wireToggle("mic", (s) => s.getAudioTracks(), "Mic", "Muted");
-      wireToggle("cam", (s) => s.getVideoTracks(), "Cam", "Cam off");
+
+      const wantOn = (id) => recall(TOGGLES[id].key) !== "0";
+
+      function refreshToggles() {
+        for (const [id, t] of Object.entries(TOGGLES)) {
+          const track = mesh && mesh.localStream && t.pick(mesh.localStream)[0];
+          const live = track ? track.enabled : wantOn(id);
+          $(id).disabled = !track;
+          $(id).classList.toggle("off", !live);
+          $(id).textContent = live ? t.on : t.off;
+        }
+      }
+
+      // Apply the remembered preference to a freshly acquired stream.
+      function applyTogglePrefs(stream) {
+        for (const [id, t] of Object.entries(TOGGLES)) {
+          const track = t.pick(stream)[0];
+          if (track) track.enabled = wantOn(id);
+        }
+      }
+
+      for (const [id, t] of Object.entries(TOGGLES)) {
+        $(id).onclick = () => {
+          const track = mesh && mesh.localStream && t.pick(mesh.localStream)[0];
+          if (!track) return;
+          track.enabled = !track.enabled;
+          remember(t.key, track.enabled ? "1" : "0");
+          refreshToggles();
+        };
+      }
 
       // ---------- join / leave ----------
       // getUserMedia takes long enough for a second click to land, which would
@@ -460,6 +503,68 @@ try {
 
       $("popout").onclick = popout;
       $("popout2").onclick = popout;
+
+      // ---------- panel size ----------
+      // Owlbear owns the popover, so resizing means asking it to change the
+      // action size. Screen coordinates are used because the iframe itself is
+      // being resized under the pointer, which makes client coordinates drift.
+      const SIZE = { minW: 260, maxW: 1400, minH: 200, maxH: 1000, w: 420, h: 540 };
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+
+      let panelW = clamp(Number(recall("tableVideoW")) || SIZE.w, SIZE.minW, SIZE.maxW);
+      let panelH = clamp(Number(recall("tableVideoH")) || SIZE.h, SIZE.minH, SIZE.maxH);
+      let locked = recall("tableVideoLocked") !== "0";
+
+      const applySize = () => {
+        OBR.action.setWidth(panelW).catch(() => {});
+        OBR.action.setHeight(panelH).catch(() => {});
+      };
+
+      function renderLock() {
+        document.body.classList.toggle("unlocked", !locked);
+        $("lock").textContent = locked ? "🔒" : "🔓";
+        $("lock").title = locked
+          ? "Panel size locked. Click to unlock and resize."
+          : "Panel size unlocked. Drag the corner, or click to lock.";
+      }
+
+      $("lock").onclick = () => {
+        locked = !locked;
+        remember("tableVideoLocked", locked ? "1" : "0");
+        renderLock();
+      };
+
+      let drag = null;
+      let pending = false;
+      $("grip").addEventListener("pointerdown", (e) => {
+        if (locked) return;
+        drag = { x: e.screenX, y: e.screenY, w: panelW, h: panelH };
+        $("grip").setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      $("grip").addEventListener("pointermove", (e) => {
+        // No locked check needed: locking hides #grip, which releases the
+        // pointer capture and fires pointercancel.
+        if (!drag) return;
+        panelW = clamp(drag.w + (e.screenX - drag.x), SIZE.minW, SIZE.maxW);
+        panelH = clamp(drag.h + (e.screenY - drag.y), SIZE.minH, SIZE.maxH);
+        // One resize per frame; each one is a round trip to Owlbear.
+        if (pending) return;
+        pending = true;
+        requestAnimationFrame(() => { pending = false; applySize(); });
+      });
+      const endDrag = () => {
+        if (!drag) return;
+        drag = null;
+        remember("tableVideoW", panelW);
+        remember("tableVideoH", panelH);
+        applySize();
+      };
+      $("grip").addEventListener("pointerup", endDrag);
+      $("grip").addEventListener("pointercancel", endDrag);
+
+      renderLock();
+      applySize();
 
       render();
     } catch (err) {
