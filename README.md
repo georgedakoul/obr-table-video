@@ -21,7 +21,7 @@ This is already deployed. GM only:
 1. Owlbear Rodeo profile → **Add Extension** → paste:
 
    ```
-   https://georgedakoul.github.io/obr-table-video/manifest.json
+   https://obr-table-video.pages.dev/manifest.json
    ```
 
 2. Open your room's extension menu and enable **Table Video** for the room.
@@ -37,11 +37,18 @@ Owlbear loads extensions from a URL — there is no upload box — so the static
 files have to sit on some public HTTPS host. It parks the files; nothing runs
 during your game.
 
-Any static host works (GitHub Pages, Cloudflare Pages, Netlify). The `icon` and
-`popover` fields in `manifest.json` are **full absolute URLs**, so a fork has to
-edit those three lines to point at its own host. They are absolute rather than
-relative because GitHub Pages serves projects from a subpath, where a leading
-`/` resolves to the wrong place.
+This copy lives on Cloudflare Pages:
+
+```
+npx wrangler pages deploy . --project-name obr-table-video
+```
+
+The `icon` and `popover` fields in `manifest.json` are **full absolute URLs**, so
+a fork has to edit those three lines to point at its own host.
+
+`_headers` sets `Cache-Control: no-cache` on everything. The files are small and
+revalidate to a 304, and a stale client is very hard to diagnose from the other
+end of a video call.
 
 ## Built-in peer-to-peer mode (default)
 
@@ -56,10 +63,13 @@ Two real limits, both inherent to serverless P2P:
 - **Group size.** It is a full mesh: every participant sends their video once
   per other participant. Comfortable to about 6 people. Past that you want an
   SFU, which is what the hosted providers are for.
-- **Strict networks.** There is only public STUN, no TURN relay. Most home
-  connections are fine, but symmetric NAT and some corporate or mobile networks
-  will fail to connect. A TURN server is the only fix and someone has to pay for
-  it, so the hosted modes remain the fallback.
+- **Strict networks.** STUN alone cannot connect two peers that are both behind
+  symmetric NAT, which is the normal case for a phone on mobile data calling a
+  desktop behind a home router. A TURN relay is the only fix, so this falls back
+  to the free public Open Relay servers, including a 443/TCP entry for networks
+  that block UDP. Media stays DTLS-SRTP encrypted, so the relay forwards bytes it
+  cannot read. Open Relay is a shared free service though: swap in your own TURN
+  credentials in `p2p.js` if you need it to be dependable.
 
 Presence works through Owlbear player metadata: joining sets an in-call flag,
 everyone else sees it via `party.onChange` and dials you. Leaving, or the panel
@@ -156,5 +166,6 @@ endorsed by, or sponsored by Owlbear Rodeo, Jitsi, or 8x8. "Owlbear Rodeo" and
 "Jitsi" are the trademarks of their respective owners and are used here only to
 describe what this extension interoperates with.
 
-No third-party code is bundled. The Owlbear Rodeo SDK (MIT) is loaded at runtime
-from esm.sh, and the video call is hosted by a Jitsi Meet instance you choose.
+`obr-sdk.js` is a bundled copy of the Owlbear Rodeo SDK (MIT). Everything else
+is original. Video is carried peer to peer, or by whichever service you point
+the hosted modes at.

@@ -78,6 +78,8 @@
 
   <hr>
 
+  <p id="build"></p>
+
   <label for="mode">Video mode</label>
   <select id="mode">
     <option value="p2p">Built in, peer to peer</option>
@@ -131,10 +133,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js";
+import OBR from "./obr-sdk.js?v=10";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=10";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=10";
 
+const BUILD = "10";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -189,6 +192,7 @@ try {
             ? "Direct connection between players, no server. Best up to about 6 people."
             : "Everyone in this Owlbear room joins the same Jitsi call.";
         $("join").disabled = !sharedLink && !usingP2P() && !hostedUrl();
+        $("build").textContent = "build " + BUILD;
         $("popout").style.display = usingP2P() ? "none" : "block";
         $("popout2").style.display = usingP2P() ? "none" : "inline-block";
         $("mic").style.display = usingP2P() ? "inline-block" : "none";

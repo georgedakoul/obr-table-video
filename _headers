@@ -1,0 +1,6 @@
+# Every file here is small and changes often, and a stale client is very hard to
+# diagnose from the other end of a video call. no-cache still lets the browser
+# keep a copy, it just forces a revalidation, so unchanged files come back as a
+# 304 with no body.
+/*
+  Cache-Control: no-cache
