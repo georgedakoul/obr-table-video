@@ -133,17 +133,15 @@ npx esbuild entry.js --bundle --format=esm --minify --outfile=obr-sdk.js
   the same trust model Owlbear itself uses for rooms.
 - The Owlbear action popover is a fixed-size panel. **Open in separate window**
   gives you a resizable call window if the panel is too cramped.
-- `meet.jit.si` is a free public service run by 8x8. Fine for a gaming group;
-  point the server field at your own Jitsi instance for anything heavier.
 
 ## License and attribution
 
 MIT, see [LICENSE](LICENSE).
 
 This is an unofficial, community-made extension. It is not affiliated with,
-endorsed by, or sponsored by Owlbear Rodeo, Jitsi, or 8x8. "Owlbear Rodeo" and
-"Jitsi" are the trademarks of their respective owners and are used here only to
-describe what this extension interoperates with.
+endorsed by, or sponsored by Owlbear Rodeo. "Owlbear Rodeo" is a trademark of
+its owner and is used here only to describe what this extension interoperates
+with.
 
 `obr-sdk.js` is a bundled copy of the Owlbear Rodeo SDK (MIT). Everything else
 is original. Video is carried peer to peer, or by whichever service you point
