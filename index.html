@@ -33,13 +33,11 @@
   #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
               white-space: nowrap; text-overflow: ellipsis; }
   #bar button { padding: 4px 8px; font-size: 12px; }
-  #mic, #cam, #leave, #popout2, #swapCut { display: none; }
-  body.is-gm.in-call.mode-p2p #swapCut { display: inline-block; }
+  #mic, #cam, #leave, #swapCut { display: none; }
+  body.is-gm.in-call #swapCut { display: inline-block; }
   body.in-call #leave { display: inline-block; }
-  body.in-call.mode-p2p #mic, body.in-call.mode-p2p #cam { display: inline-block; }
-  body.in-call:not(.mode-p2p) #popout2 { display: inline-block; }
+  body.in-call #mic, body.in-call #cam { display: inline-block; }
 
-  #call { flex: 1 1 auto; width: 100%; border: 0; display: none; }
 
   /* Peer-to-peer video grid */
   #grid { display: none; flex: 1 1 auto; overflow-y: auto; padding: 6px;
@@ -87,7 +85,6 @@
   #join:disabled { background: #444; color: #999; border-color: #444; cursor: default; }
   p { margin: 0; font-size: 12px; opacity: .6; }
   .err { color: #ff9b9b; }
-  #fallback, #gmRow { display: none; }
   hr { border: 0; border-top: 1px solid #3a3a3a; margin: 4px 0; }
   .row { display: flex; gap: 6px; }
   .row button { flex: 0 0 auto; }
@@ -115,7 +112,6 @@
   <button id="swapCut" title="Swap who can hear: everyone cut off is let back in, everyone else is cut off">⇄</button>
   <button id="mic" title="Mute microphone">Mic</button>
   <button id="cam" title="Turn off camera">Cam</button>
-  <button id="popout2">Pop out</button>
   <button id="leave">Leave</button>
 </div>
 
@@ -126,31 +122,15 @@
 <div id="setup">
   <p id="status"></p>
   <button id="join">Join video</button>
-  <button id="popout">Open in separate window</button>
-  <p id="note"></p>
-  <input id="fallback" readonly>
 
   <hr>
 
   <p id="build"></p>
 
-  <div id="gmRow">
-    <hr>
-    <label for="shared">Shared call link (GM only)</label>
-    <p>Overrides the mode above. Paste a link to any call and everyone in this
-       room joins that exact call.</p>
-    <input id="shared" spellcheck="false" autocapitalize="off" placeholder="https://...">
-    <p id="sharedErr" class="err"></p>
-    <div class="row">
-      <button id="saveShared">Set for room</button>
-      <button id="clearShared">Clear</button>
-    </div>
-  </div>
 </div>
 
 <div id="grip" title="Drag to resize"></div>
 
-<iframe id="call" allow="camera; microphone; autoplay; display-capture; fullscreen"></iframe>
 
 <script>
   window.__tableVideoFail = function (what, detail) {
@@ -178,12 +158,10 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=29";
-import { sanitizeLink } from "./callurl.js?v=29";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=29";
+import OBR from "./obr-sdk.js?v=30";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=30";
 
-const BUILD = "29";  // bump together with the ?v= on the imports above
-const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
+const BUILD = "30";  // bump together with the ?v= on the imports above
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
 // this and stops sending that peer audio, so it does not rely on the excluded
@@ -206,11 +184,8 @@ try {
       const isGM = (await OBR.player.getRole()) === "GM";
       const callRoom = "obr-table-" + OBR.room.id;
 
-      $("gmRow").style.display = isGM ? "block" : "none";
       document.body.classList.toggle("is-gm", isGM);
 
-      let sharedLink = null;
-      let joinedUrl = null;   // hosted mode
       let mesh = null;        // p2p mode
       let names = new Map();  // connectionId -> display name
       let lastError = null;   // sticky, so a failed join stays readable
@@ -219,30 +194,19 @@ try {
       let linkTimer = null;   // refreshes the per-tile connection labels
       const linkKind = new Map(); // peerId -> "direct" | "relay"
 
-      // A GM-set shared link replaces the built-in call with an iframe of
-      // whatever service they chose. With no link, it is peer to peer.
-      const hostedUrl = () => sharedLink;
-      const usingP2P = () => !sharedLink;
-
       function render() {
         // A failed join has to survive the render() that runs right after it,
         // otherwise the reason is wiped and the button just looks dead.
         $("status").className = lastError ? "err" : "";
-        $("status").textContent = lastError ? lastError : sharedLink
-          ? "Joining the GM's call at " + new URL(sharedLink).host + "."
+        $("status").textContent = lastError ? lastError
           : "Direct connection between players, no server. Best up to about 6 people.";
-        // There is always something to join now: a shared link, or peer to peer.
         $("join").disabled = false;
         $("build").textContent = "build " + BUILD;
-        $("popout").style.display = usingP2P() ? "none" : "block";
-        document.body.classList.toggle("mode-p2p", usingP2P());
       }
 
       const readMeta = (meta) => {
-        sharedLink = sanitizeLink(meta && meta[META_LINK]);
         const raw = meta && meta[META_SILENCED];
         silenced = new Set(Array.isArray(raw) ? raw.filter((v) => typeof v === "string") : []);
-        if (isGM) $("shared").value = sharedLink || "";
         applySilenced();
         render();
       };
@@ -250,30 +214,15 @@ try {
       OBR.room.onMetadataChange(readMeta);
 
 
-      $("saveShared").onclick = async () => {
-        const clean = sanitizeLink($("shared").value);
-        if (!clean) { $("sharedErr").textContent = "Needs a full https:// link."; return; }
-        $("sharedErr").textContent = "";
-        await OBR.room.setMetadata({ [META_LINK]: clean });
-      };
-      $("clearShared").onclick = async () => {
-        $("sharedErr").textContent = "";
-        await OBR.room.setMetadata({ [META_LINK]: undefined });
-      };
 
       // ---------- view switching ----------
-      function showView(view, url) {
-        const hosted = view === "hosted";
+      function showView(view) {
         // The bar is always present so the lock stays reachable; CSS decides
         // which controls belong to which view, so nothing can overlap.
-        document.body.classList.toggle("in-call", view !== "setup");
-        $("setup").style.display = view === "setup" ? "flex" : "none";
-        $("call").style.display = hosted ? "block" : "none";
-        $("grid").style.display = view === "p2p" ? "grid" : "none";
-        const target = hosted ? url : "about:blank";
-        if ($("call").src !== target) $("call").src = target;
-        joinedUrl = hosted ? url : null;
-        if (hosted) $("barLabel").textContent = new URL(url).host;
+        const inCall = view !== "setup";
+        document.body.classList.toggle("in-call", inCall);
+        $("setup").style.display = inCall ? "none" : "flex";
+        $("grid").style.display = inCall ? "grid" : "none";
       }
 
       // ---------- peer to peer ----------
@@ -552,12 +501,7 @@ try {
         lastError = null;
         $("join").disabled = true;
         try {
-          if (usingP2P()) {
-            await joinP2P();
-          } else {
-            const url = hostedUrl();
-            if (url && joinedUrl !== url) showView("hosted", url);
-          }
+          await joinP2P();
         } finally {
           joining = false;
           render();
@@ -577,21 +521,7 @@ try {
         OBR.player.setMetadata({ [META_IN_CALL]: undefined }).catch(() => {});
       });
 
-      const popout = () => {
-        const url = hostedUrl();
-        if (!url) return;
-        if (window.open(url, "_blank", "width=960,height=680")) {
-          if (joinedUrl !== null) showView("setup");
-        } else {
-          $("note").textContent = "Popup blocked. Copy this link into a new tab:";
-          $("fallback").value = url;
-          $("fallback").style.display = "block";
-          $("fallback").select();
-        }
-      };
       $("swapCut").onclick = invertSilenced;
-      $("popout").onclick = popout;
-      $("popout2").onclick = popout;
 
       // ---------- panel size ----------
       // Owlbear owns the popover, so resizing means asking it to change the

@@ -24,10 +24,6 @@
     {
       "name": "autoplay",
       "reason": "Play the other players' audio and video without a click per tile"
-    },
-    {
-      "name": "display-capture",
-      "reason": "Only so a call service embedded via a shared call link can screen share"
     }
   ]
 }

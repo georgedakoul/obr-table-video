@@ -52,17 +52,13 @@ client, and it resets whenever the GM starts a call.
   else. Comfortable up to about six people.
 - **Strict networks.** Two players both behind symmetric NAT cannot connect
   directly and fall back to a free public TURN relay, which is shared and
-  capped. If someone cannot connect, the GM can paste any `https://` call link
-  (Element Call, Meet, Zoom) into **Shared call link** and the whole room joins
-  that instead.
+  capped. On a restrictive network a call may fail to connect.
 - **Privacy.** No accounts, no analytics, no tracking, no cookies. Media is
   encrypted end to end. Because it is peer to peer, participants' IP addresses
   are visible to each other, as with any peer-to-peer video tool. Anyone with
   your Owlbear room link can join the call.
-- **Permissions.** Camera and microphone for the call, autoplay so tiles play
-  without a click each. `display-capture` is requested only so a call service
-  embedded through **Shared call link** can offer screen sharing; this extension
-  never captures your screen.
+- **Permissions.** Camera and microphone for the call, and autoplay so tiles
+  play without a click each. Nothing else.
 
 Full details, including what is stored and which third parties are contacted,
 are in the [disclosure section of the README](https://github.com/georgedakoul/obr-table-video#disclosure).

@@ -1,19 +1,5 @@
 import assert from "node:assert/strict";
-import { sanitizeLink } from "./callurl.js";
 import { isInitiator, Mesh, RTC_CONFIG, plainSdp, plainCandidate } from "./p2p.js";
-
-// --- sanitizeLink: a GM-pasted link is loaded into an iframe -------------
-assert.equal(sanitizeLink("https://call.element.io/abc"), "https://call.element.io/abc");
-assert.equal(sanitizeLink("  https://meet.example.org/x  "), "https://meet.example.org/x");
-
-for (const bad of [
-  "javascript:alert(1)", "JavaScript:alert(1)",
-  "data:text/html,<script>alert(1)</script>",
-  "http://insecure.example.org/x", "vbscript:msgbox", "file:///etc/passwd",
-  "//call.element.io/abc", "call.element.io/abc", "", "   ", null, undefined,
-]) {
-  assert.equal(sanitizeLink(bad), null, `refuses ${JSON.stringify(bad)}`);
-}
 
 // --- isInitiator: exactly one side of every pair offers ------------------
 // Glare (both sides offering) is the classic way a mesh deadlocks, so this must

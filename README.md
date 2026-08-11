@@ -68,15 +68,9 @@ pointing at players who have left are pruned automatically.
 
 ## If someone cannot connect
 
-The GM can paste any `https://` call link (Element Call, Google Meet, Zoom, a
-self-hosted Jitsi) into **Shared call link** and press **Set for room**. It is
-stored in Owlbear room metadata, so every client picks it up immediately and
-joins that exact call instead of the built-in one. **Clear** returns everyone to
-peer to peer. In this mode **Open in separate window** opens the call in its own
-browser window.
-
-Only absolute `https://` links are accepted, because that link is loaded into an
-iframe.
+There is no fallback. Two peers that cannot reach each other directly fall back
+to the TURN relay, and if that fails too, they cannot join. See
+[Third-party services](#third-party-services).
 
 ---
 
@@ -84,23 +78,19 @@ iframe.
 
 ## What this extension can access, and why
 
-The manifest requests four iframe permissions:
+The manifest requests three iframe permissions:
 
 | Permission | Why |
 |---|---|
 | `camera` | Your webcam, for the call. |
 | `microphone` | Your microphone, for the call. |
 | `autoplay` | To play the other participants' audio and video without a click on every tile. |
-| `display-capture` | **Not used by the built-in call.** It is only there so a call service embedded through **Shared call link** can offer screen sharing. Nothing in this extension captures your screen. |
 
 ## Where your audio and video go
 
-In the built-in mode, **your camera and microphone streams go directly to the
-other participants' browsers.** They are not recorded, and they do not pass
-through any server run by this project, because this project runs no servers.
-
-If the GM sets a **Shared call link**, that third-party service is embedded in
-an iframe and its own privacy terms apply to everything inside it.
+**Your camera and microphone streams go directly to the other participants'
+browsers.** They are not recorded, and they do not pass through any server run
+by this project, because this project runs no servers.
 
 ## Third-party services
 
@@ -125,9 +115,8 @@ a relay you pay for.
 
 - **In your browser** (`localStorage`): microphone and camera preference, panel
   size and lock state. Nothing identifying.
-- **In Owlbear room metadata**: whether you are currently in the call, the GM's
-  shared call link if set, and the list of connection ids currently cut off.
-  Cleared when the GM starts a call.
+- **In Owlbear room metadata**: whether you are currently in the call, and the
+  list of connection ids currently cut off. Cleared when the GM starts a call.
 
 No accounts, no analytics, no tracking, no cookies, no telemetry. Nothing is sent
 anywhere except as listed above.
