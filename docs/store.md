@@ -1,7 +1,7 @@
 ---
 title: Table Video
 description: Peer-to-peer webcam video chat for your table. No server, no account.
-author: George
+author: George Damian Koulouris
 image: https://raw.githubusercontent.com/georgedakoul/obr-table-video/main/docs/hero.png
 icon: https://raw.githubusercontent.com/georgedakoul/obr-table-video/main/docs/store-icon.png
 tags:

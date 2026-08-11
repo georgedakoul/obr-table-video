@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "manifest_version": 1,
   "description": "Peer-to-peer webcam video chat for your table. No server, no account.",
-  "author": "George",
+  "author": "George Damian Koulouris",
   "icon": "https://obr-table-video.pages.dev/icon.svg",
   "action": {
     "title": "Table Video",
