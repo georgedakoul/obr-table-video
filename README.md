@@ -16,27 +16,32 @@ Owlbear.
 
 ## Install
 
-Owlbear loads extensions from a URL — there is no upload box — so the four
-static files (`manifest.json`, `index.html`, `callurl.js`, `icon.svg`) have to
-sit on some public HTTPS host. This is a one-time parking spot for the files,
-not a server that runs during your game.
+This is already deployed. GM only:
 
-1. Put the files on any static host. Cloudflare Pages:
+1. Owlbear Rodeo profile → **Add Extension** → paste:
 
    ```
-   npx wrangler pages deploy . --project-name obr-table-video
+   https://georgedakoul.github.io/obr-table-video/manifest.json
    ```
 
-   GitHub Pages or a Netlify drag-and-drop deploy work identically.
-
-2. GM only: Owlbear profile → **Add Extension** → paste the manifest URL, e.g.
-   `https://obr-table-video.pages.dev/manifest.json`. Then open the room's
-   extension menu and enable it for the room.
+2. Open your room's extension menu and enable **Table Video** for the room.
 
 3. Players just open the GM's room link. Extensions are enabled per room, so
    players install nothing.
 
 4. Click the camera icon in the Owlbear toolbar, then **Join video**.
+
+### Hosting your own copy
+
+Owlbear loads extensions from a URL — there is no upload box — so the static
+files have to sit on some public HTTPS host. It parks the files; nothing runs
+during your game.
+
+Any static host works (GitHub Pages, Cloudflare Pages, Netlify). The `icon` and
+`popover` fields in `manifest.json` are **full absolute URLs**, so a fork has to
+edit those three lines to point at its own host. They are absolute rather than
+relative because GitHub Pages serves projects from a subpath, where a leading
+`/` resolves to the wrong place.
 
 ## Video server
 

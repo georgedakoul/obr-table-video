@@ -4,11 +4,11 @@
   "manifest_version": 1,
   "description": "Webcam video chat for everyone in your Owlbear Rodeo room.",
   "author": "George",
-  "icon": "/icon.svg",
+  "icon": "https://georgedakoul.github.io/obr-table-video/icon.svg",
   "action": {
     "title": "Table Video",
-    "icon": "/icon.svg",
-    "popover": "/index.html",
+    "icon": "https://georgedakoul.github.io/obr-table-video/icon.svg",
+    "popover": "https://georgedakoul.github.io/obr-table-video/index.html",
     "width": 420,
     "height": 540
   },
