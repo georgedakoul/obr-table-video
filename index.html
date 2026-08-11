@@ -33,7 +33,8 @@
   #bar span { flex: 1; font-size: 12px; opacity: .6; overflow: hidden;
               white-space: nowrap; text-overflow: ellipsis; }
   #bar button { padding: 4px 8px; font-size: 12px; }
-  #mic, #cam, #leave, #popout2 { display: none; }
+  #mic, #cam, #leave, #popout2, #swapCut { display: none; }
+  body.is-gm.in-call.mode-p2p #swapCut { display: inline-block; }
   body.in-call #leave { display: inline-block; }
   body.in-call.mode-p2p #mic, body.in-call.mode-p2p #cam { display: inline-block; }
   body.in-call:not(.mode-p2p) #popout2 { display: inline-block; }
@@ -109,6 +110,7 @@
 <div id="bar">
   <button id="lock" title="Unlock to resize the panel">🔓</button>
   <span id="barLabel"></span>
+  <button id="swapCut" title="Swap who can hear: everyone cut off is let back in, everyone else is cut off">⇄</button>
   <button id="mic" title="Mute microphone">Mic</button>
   <button id="cam" title="Turn off camera">Cam</button>
   <button id="popout2">Pop out</button>
@@ -185,11 +187,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=23";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=23";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=23";
+import OBR from "./obr-sdk.js?v=24";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=24";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=24";
 
-const BUILD = "23";  // bump together with the ?v= on the imports above
+const BUILD = "24";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 // Connection ids the GM has cut off from hearing the table. Every client reads
@@ -216,6 +218,7 @@ try {
       $("mode").value = recall("tableVideoMode") || "p2p";
       $("server").value = recall("tableVideoJitsiHost") || PROVIDERS.jitsi.host;
       $("gmRow").style.display = isGM ? "block" : "none";
+      document.body.classList.toggle("is-gm", isGM);
 
       let sharedLink = null;
       let joinedUrl = null;   // hosted mode
@@ -328,6 +331,14 @@ try {
             ? "This player cannot hear anyone. Click to let them hear again."
             : "Stop this player hearing the table, you included";
         }
+      }
+
+      // Flip the cutoff: whoever could hear is cut off and whoever was cut off
+      // is let back in. Lets the GM bounce between two groups in one click.
+      async function invertSilenced() {
+        if (!mesh) return;
+        const next = [...mesh.peers.keys()].filter((id) => !silenced.has(id));
+        await OBR.room.setMetadata({ [META_SILENCED]: next }).catch(() => {});
       }
 
       async function toggleSilenced(id) {
@@ -540,6 +551,7 @@ try {
           $("fallback").select();
         }
       };
+      $("swapCut").onclick = invertSilenced;
       $("popout").onclick = popout;
       $("popout2").onclick = popout;
 
