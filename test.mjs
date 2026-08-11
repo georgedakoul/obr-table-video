@@ -141,6 +141,63 @@ mesh.syncPeers(["m", "a"]);
 assert.equal(mesh.peers.get("a"), before, "existing peer connection reused");
 
 const openCount = closed.length;
+// --- silencing: only the named peer loses our audio ----------------------
+const audioTrack = { kind: "audio", enabled: true };
+const replaced = [];
+globalThis.RTCPeerConnection = class {
+  constructor() { this.connectionState = "new"; this.remoteDescription = null; this.senders = []; }
+  addTrack(track) {
+    const sender = { track, replaceTrack(t) { this.track = t; replaced.push([this, t]); return Promise.resolve(); } };
+    this.senders.push(sender);
+    return sender;
+  }
+  close() { closed.push(this); }
+  async createOffer() { return nonCloneable({ type: "offer", sdp: "v=0" }); }
+  async setLocalDescription(d) { this.localDescription = nonCloneable({ type: d.type, sdp: d.sdp }); }
+};
+
+const m2 = new Mesh({
+  selfId: "m",
+  send: () => {},
+  onTrack: () => {},
+  onPeerEnd: () => {},
+  localStream: { getTracks: () => [audioTrack], getAudioTracks: () => [audioTrack] },
+});
+m2.syncPeers(["m", "a", "b"]);
+const senderOf = (id) => m2.peers.get(id).audioSender;
+assert.equal(senderOf("a").track, audioTrack, "audio flows to a by default");
+
+m2.setSilenced(["a"]);
+assert.equal(senderOf("a").track, null, "silenced peer stops receiving our audio");
+assert.equal(senderOf("b").track, audioTrack, "everyone else is unaffected");
+
+// A peer joining while a cutoff is active must inherit it.
+m2.syncPeers(["m", "a", "b", "c"]);
+assert.equal(senderOf("c").track, audioTrack, "new peer not silenced");
+m2.setSilenced(["a", "c"]);
+assert.equal(senderOf("c").track, null, "newly silenced peer cut off");
+m2.syncPeers(["m", "a", "b", "c", "d"]);
+assert.equal(m2.peers.get("d").audioSender.track, audioTrack, "unsilenced newcomer unaffected");
+
+// A peer silenced before they even join must be cut off the moment they do.
+// This is what the applySilence call inside peer() is for.
+m2.setSilenced(["a", "c", "e"]);
+m2.syncPeers(["m", "a", "b", "c", "d", "e"]);
+assert.equal(m2.peers.get("e").audioSender.track, null,
+  "peer silenced before joining is cut off on arrival");
+
+// Lifting it restores the track.
+const before2 = replaced.length;
+m2.setSilenced([]);
+assert.equal(senderOf("a").track, audioTrack, "audio restored when the cutoff lifts");
+assert.equal(m2.peers.get("e").audioSender.track, audioTrack, "and for the late joiner");
+assert.ok(replaced.length > before2, "restore actually called replaceTrack");
+
+// Re-applying the same state must not churn replaceTrack.
+const stable = replaced.length;
+m2.setSilenced([]);
+assert.equal(replaced.length, stable, "no redundant replaceTrack when nothing changed");
+
 mesh.close();
 assert.equal(mesh.peers.size, 0, "close tears down every peer");
 assert.equal(closed.length, openCount + 1, "close() called on the remaining connection");

@@ -56,6 +56,16 @@
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile.waiting::after { content: attr(data-state); position: absolute; inset: 0;
             display: grid; place-items: center; font-size: 11px; opacity: .6; }
+  /* GM-only per-player cutoff, revealed on hover or tap like the main bar. */
+  .tile .cut { position: absolute; top: 4px; right: 4px; padding: 2px 6px; font-size: 12px;
+               border-radius: 6px; border: 1px solid #ffffff33; background: #000000a6;
+               color: #fff; cursor: pointer; opacity: 0; transition: opacity .15s ease; }
+  .tile:hover .cut, body.touched .tile .cut { opacity: 1; }
+  .tile.silenced .cut { opacity: 1; background: #8c2f2fe6; }
+  .tile.silenced { outline: 2px solid #8c2f2f; outline-offset: -2px; }
+  #cutBanner { display: none; flex: 0 0 auto; padding: 6px 8px; background: #8c2f2f;
+               color: #fff; font-size: 12px; text-align: center; }
+  body.silenced-me #cutBanner { display: block; }
 
   #setup { flex: 1 1 auto; padding: 16px; display: none; flex-direction: column; gap: 10px;
            overflow-y: auto; }
@@ -100,6 +110,8 @@
   <button id="popout2">Pop out</button>
   <button id="leave">Leave</button>
 </div>
+
+<div id="cutBanner">The GM has muted the table for you. You cannot hear the others.</div>
 
 <div id="grid"></div>
 
@@ -169,13 +181,17 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=20";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=20";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=20";
+import OBR from "./obr-sdk.js?v=21";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=21";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=21";
 
-const BUILD = "20";  // bump together with the ?v= on the imports above
+const BUILD = "21";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
+// Connection ids the GM has cut off from hearing the table. Every client reads
+// this and stops sending that peer audio, so it does not rely on the excluded
+// client muting itself.
+const META_SILENCED = "com.github.georgedakoul.obr-table-video/silenced";
 
 const remember = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 const recall = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -203,6 +219,7 @@ try {
       let names = new Map();  // connectionId -> display name
       let lastError = null;   // sticky, so a failed join stays readable
       let signalErr = "";     // most recent signalling failure
+      let silenced = new Set(); // connection ids the GM has cut off
 
       // ---------- hosted (iframe) mode ----------
       function hostedUrl() {
@@ -236,7 +253,10 @@ try {
 
       const readMeta = (meta) => {
         sharedLink = sanitizeLink(meta && meta[META_LINK]);
+        const raw = meta && meta[META_SILENCED];
+        silenced = new Set(Array.isArray(raw) ? raw.filter((v) => typeof v === "string") : []);
         if (isGM) $("shared").value = sharedLink || "";
+        applySilenced();
         render();
       };
       readMeta(await OBR.room.getMetadata());
@@ -280,10 +300,46 @@ try {
           el.id = "tile-" + id;
           el.dataset.state = "waiting";
           el.innerHTML = '<video autoplay playsinline></video><b></b>';
+          // Only the GM gets the cutoff control, and never on their own tile.
+          if (isGM && id !== myId) {
+            const cut = document.createElement("button");
+            cut.className = "cut";
+            cut.onclick = () => toggleSilenced(id);
+            el.appendChild(cut);
+          }
           $("grid").appendChild(el);
         }
         el.querySelector("b").textContent = label;
+        paintSilence(el, id);
         return el;
+      }
+
+      function paintSilence(el, id) {
+        const off = silenced.has(id);
+        el.classList.toggle("silenced", off);
+        const cut = el.querySelector(".cut");
+        if (cut) {
+          cut.textContent = off ? "🔇" : "🔊";
+          cut.title = off
+            ? "This player cannot hear the table. Click to let them hear again."
+            : "Stop this player hearing the table";
+        }
+      }
+
+      async function toggleSilenced(id) {
+        const next = new Set(silenced);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        await OBR.room.setMetadata({ [META_SILENCED]: [...next] }).catch(() => {});
+      }
+
+      // Applies whatever the GM has set, on every client. That is what makes it
+      // stick: each peer stops sending audio to the excluded player.
+      function applySilenced() {
+        if (mesh) mesh.setSilenced(silenced);
+        document.body.classList.toggle("silenced-me", silenced.has(myId));
+        for (const el of $("grid").querySelectorAll(".tile")) {
+          paintSilence(el, el.id.slice("tile-".length));
+        }
       }
 
       // Peers only need to know if something went wrong; the detailed counters
@@ -349,6 +405,7 @@ try {
 
         updateBar();
         refreshToggles();
+        applySilenced();   // a fresh mesh must adopt whatever the GM already set
         showView("p2p");
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {

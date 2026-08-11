@@ -70,7 +70,10 @@ export class Mesh {
     this.onState = onState;
     this.onError = onError;
     this.localStream = localStream;
-    this.peers = new Map(); // peerId -> { pc, pendingIce[] }
+    this.peers = new Map(); // peerId -> { pc, pendingIce[], audioSender }
+    // Peers who must not receive our audio. Enforced by every sender, not by
+    // asking the excluded client to mute itself.
+    this.silenced = new Set();
   }
 
   /** Reconcile open connections against the set of peers currently in the call. */
@@ -96,9 +99,11 @@ export class Mesh {
 
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
-        pc.addTrack(track, this.localStream);
+        const sender = pc.addTrack(track, this.localStream);
+        if (track.kind === "audio") entry.audioSender = sender;
       }
     }
+    this.applySilence(peerId);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) this.signal(peerId, { type: "ice", candidate: plainCandidate(e.candidate) });
@@ -113,6 +118,27 @@ export class Mesh {
     };
 
     return entry;
+  }
+
+  /**
+   * Replace the set of peers who must not hear us. Uses replaceTrack on the
+   * one connection, so audio to everyone else is untouched and no
+   * renegotiation is needed.
+   */
+  setSilenced(peerIds) {
+    this.silenced = new Set(peerIds);
+    for (const id of this.peers.keys()) this.applySilence(id);
+  }
+
+  applySilence(peerId) {
+    const entry = this.peers.get(peerId);
+    if (!entry || !entry.audioSender) return;
+    const wanted = this.silenced.has(peerId)
+      ? null
+      : (this.localStream && this.localStream.getAudioTracks()[0]) || null;
+    if (entry.audioSender.track === wanted) return;
+    const r = entry.audioSender.replaceTrack(wanted);
+    if (r && r.catch) r.catch((e) => this.onError(peerId, "silence: " + (e && e.message || e)));
   }
 
   signal(peerId, msg) {
