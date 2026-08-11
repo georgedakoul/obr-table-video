@@ -133,11 +133,11 @@
 <script type="module">
 // Vendored rather than fetched from a CDN: every extra cross-origin request on
 // startup is another thing that can hang or be cut off mid-load.
-import OBR from "./obr-sdk.js?v=10";
-import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=10";
-import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=10";
+import OBR from "./obr-sdk.js?v=11";
+import { callUrl, sanitizeLink, PROVIDERS } from "./callurl.js?v=11";
+import { Mesh, SIGNAL_CHANNEL } from "./p2p.js?v=11";
 
-const BUILD = "10";  // bump together with the ?v= on the imports above
+const BUILD = "11";  // bump together with the ?v= on the imports above
 const META_LINK = "com.github.georgedakoul.obr-table-video/callLink";
 const META_IN_CALL = "com.github.georgedakoul.obr-table-video/inCall";
 
@@ -166,6 +166,8 @@ try {
       let mesh = null;        // p2p mode
       let names = new Map();  // connectionId -> display name
       let lastError = null;   // sticky, so a failed join stays readable
+      let hellos = 0;         // tiny broadcast pings received, see updateDiag
+      let signalErr = "";     // most recent signalling failure
 
       // ---------- hosted (iframe) mode ----------
       function hostedUrl() {
@@ -257,8 +259,9 @@ try {
         const states = [...mesh.peers.entries()]
           .map(([id, e]) => (names.get(id) || id.slice(0, 4)) + ":" + e.pc.iceConnectionState);
         $("barLabel").textContent =
-          `P2P sent ${mesh.stats.sent} recv ${mesh.stats.received}` +
-          (states.length ? " | " + states.join(" ") : " | alone");
+          `b${BUILD} hello ${hellos} sent ${mesh.stats.sent} recv ${mesh.stats.received}` +
+          (states.length ? " | " + states.join(" ") : " | alone") +
+          (signalErr ? " | " + signalErr : "");
       }
 
       const sendSignal = (toId, msg) =>
@@ -294,6 +297,7 @@ try {
             if (v.srcObject !== remoteStream) v.srcObject = remoteStream;
           },
           onPeerEnd: (peerId) => document.getElementById("tile-" + peerId)?.remove(),
+          onError: (peerId, err) => { signalErr = err; updateDiag(); },
           onState: (peerId, state) => {
             const el = document.getElementById("tile-" + peerId);
             if (el) el.dataset.state = state;
@@ -314,10 +318,26 @@ try {
 
         unsubSignal = OBR.broadcast.onMessage(SIGNAL_CHANNEL, (event) => {
           const d = event.data;
-          if (!d || d.to !== myId) return;
+          if (!d) return;
+          // A tiny payload broadcast to everyone. If hellos arrive but the much
+          // larger SDP offers do not, the channel has a size limit rather than
+          // being broken outright.
+          if (d.to === "*") {
+            hellos++;
+            // Answer a hello once, so whoever joined first also sees a round
+            // trip. Acks are never answered, so this cannot loop.
+            if (d.msg && d.msg.type === "hello") {
+              sendSignal("*", { type: "hello-ack" });
+            }
+            updateDiag();
+            return;
+          }
+          if (d.to !== myId) return;
           // The sender identity comes from Owlbear, not from the payload.
           mesh.handleSignal(event.connectionId, d.msg);
         });
+
+        sendSignal("*", { type: "hello" });
 
         const syncParty = (players) => {
           names = new Map(players.map((p) => [p.connectionId, p.name]));

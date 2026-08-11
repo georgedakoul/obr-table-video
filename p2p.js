@@ -43,12 +43,13 @@ export function isInitiator(selfId, peerId) {
 export class Mesh {
   // send(toId, message) goes out over the Owlbear broadcast channel.
   // onState(peerId, state) reports connection progress for the UI.
-  constructor({ selfId, send, onTrack, onPeerEnd, onState = () => {}, localStream = null }) {
+  constructor({ selfId, send, onTrack, onPeerEnd, onState = () => {}, onError = () => {}, localStream = null }) {
     this.selfId = selfId;
     this.send = send;
     this.onTrack = onTrack;
     this.onPeerEnd = onPeerEnd;
     this.onState = onState;
+    this.onError = onError;
     this.localStream = localStream;
     this.peers = new Map(); // peerId -> { pc, pendingIce[] }
     // Counters so the UI can tell "no signalling arrived" apart from
@@ -101,20 +102,40 @@ export class Mesh {
   // Every outbound message goes through here so the counter stays honest.
   signal(peerId, msg) {
     this.stats.sent++;
-    this.send(peerId, msg);
+    // send() is async; a rejected broadcast must not vanish.
+    try {
+      const r = this.send(peerId, msg);
+      if (r && r.catch) r.catch((e) => this.onError(peerId, "send: " + (e && e.message || e)));
+    } catch (err) {
+      this.onError(peerId, "send: " + (err && err.message || err));
+    }
   }
 
   async connect(peerId) {
-    const { pc } = this.peer(peerId);
-    if (!isInitiator(this.selfId, peerId)) return; // the other side will offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    this.signal(peerId, { type: "offer", sdp: pc.localDescription });
+    // Called without await from syncPeers, so anything thrown here would become
+    // a silent unhandled rejection.
+    try {
+      const { pc } = this.peer(peerId);
+      if (!isInitiator(this.selfId, peerId)) return; // the other side will offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      this.signal(peerId, { type: "offer", sdp: pc.localDescription });
+    } catch (err) {
+      this.onError(peerId, "offer: " + (err && err.message || err));
+    }
   }
 
   async handleSignal(fromId, msg) {
     if (!msg || typeof msg !== "object") return;
     this.stats.received++;
+    try {
+      await this.route(fromId, msg);
+    } catch (err) {
+      this.onError(fromId, msg.type + ": " + (err && err.message || err));
+    }
+  }
+
+  async route(fromId, msg) {
     const entry = this.peer(fromId);
     const { pc } = entry;
 
